@@ -1,0 +1,39 @@
+# --- warden shared ignores (managed by warden-core/tooling/sync-shared.sh) ---
+# macOS
+.DS_Store
+# Xcode / Tuist
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcodeproj/
+*.xcworkspace/
+Derived/
+# CMake
+build/
+cmake-build-*/
+out/
+# Visual Studio
+.vs/
+*.user
+# vcpkg
+vcpkg_installed/
+# Python
+__pycache__/
+*.pyc
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.cer
+config.local.json
+# Runtime data
+data/
+# Tooling
+.superpowers/
+# Coverage
+*.profraw
+coverage/
+# --- end warden shared ignores ---

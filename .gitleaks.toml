@@ -1,0 +1,8 @@
+title = "warden gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Committed example configs contain placeholders only"
+paths = ['''\.env\.example$''', '''config\.example\.json$''']
