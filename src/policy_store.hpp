@@ -44,6 +44,7 @@ class FilePolicyStore final : public PolicyStore {
   void commit(const PolicyDoc& doc) override;
 
  private:
+  [[nodiscard]] bool hasLaterVersions() const;
   [[nodiscard]] std::filesystem::path versionFile(std::int64_t version) const;
 
   std::filesystem::path dir_;

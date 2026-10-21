@@ -33,12 +33,24 @@ std::int64_t parsePointer(const std::string& text) {
 FilePolicyStore::FilePolicyStore(const std::filesystem::path& dataDir)
     : dir_(dataDir / "policies") {
   const std::scoped_lock lock(mutex_);
-  const auto pointer = readFile(dir_ / "active");
-  if (!pointer) {
+  std::error_code ec;
+  const bool pointerExists = std::filesystem::exists(dir_ / "active", ec);
+  if (ec) {
+    throw StorageError("cannot inspect policy pointer: " + ec.message());
+  }
+  if (!pointerExists) {
+    if (hasLaterVersions()) {
+      throw StorageError("policy pointer is missing but later versions exist; restore " +
+                         (dir_ / "active").string());
+    }
     writeFileAtomic(versionFile(1), kBootstrapPolicy);
     writeFileAtomic(dir_ / "active", "1\n");
     active_ = PolicyDoc{1, kBootstrapPolicy};
     return;
+  }
+  const auto pointer = readFile(dir_ / "active");
+  if (!pointer) {
+    throw StorageError("cannot read policy pointer: " + (dir_ / "active").string());
   }
   const std::int64_t version = parsePointer(*pointer);
   if (version <= 0) {
@@ -49,6 +61,27 @@ FilePolicyStore::FilePolicyStore(const std::filesystem::path& dataDir)
     throw StorageError("missing policy file: " + versionFile(version).string());
   }
   active_ = PolicyDoc{version, std::move(*json)};
+}
+
+bool FilePolicyStore::hasLaterVersions() const {
+  std::error_code ec;
+  std::filesystem::directory_iterator it(dir_, ec);
+  if (ec) {
+    return false;  // directory absent: nothing to protect
+  }
+  for (const std::filesystem::directory_iterator end; it != end; it.increment(ec)) {
+    if (ec) {
+      throw StorageError("cannot scan policy directory: " + ec.message());
+    }
+    const std::string name = it->path().filename().string();
+    constexpr std::string_view kSuffix = ".json";
+    if (name.size() > kSuffix.size() + 1 && name.front() == 'v' &&
+        name.compare(name.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0 &&
+        parsePointer(name.substr(1, name.size() - 1 - kSuffix.size())) >= 2) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::filesystem::path FilePolicyStore::versionFile(std::int64_t version) const {

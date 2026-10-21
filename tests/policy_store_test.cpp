@@ -174,3 +174,43 @@ TEST(PolicyStore, FilesLiveDirectlyInDataDir) {
   EXPECT_TRUE(fs::exists(dir.path() / "policies" / "draft.json"));
   EXPECT_FALSE(fs::exists(dir.path() / "data"));
 }
+
+TEST(PolicyStore, UnreadablePointerDoesNotBootstrap) {
+  TempDir dir;
+  {
+    FilePolicyStore store(dir.path());
+  }
+  const std::string marker = R"({"schemaVersion":1,"version":1,"rules":[],"marker":true})";
+  writeFileAtomic(dir.policies() / "v1.json", marker);
+  fs::remove(dir.policies() / "active");
+  fs::create_directory(dir.policies() / "active");  // exists but cannot be read as a file
+  EXPECT_THROW(FilePolicyStore{dir.path()}, StorageError);
+  EXPECT_EQ(readFile(dir.policies() / "v1.json"), marker);
+  EXPECT_TRUE(fs::is_directory(dir.policies() / "active"));
+}
+
+TEST(PolicyStore, MissingPointerWithLaterVersionsFailsClosed) {
+  TempDir dir;
+  {
+    FilePolicyStore store(dir.path());
+  }
+  const std::string marker = R"({"schemaVersion":1,"version":1,"rules":[],"marker":true})";
+  writeFileAtomic(dir.policies() / "v1.json", marker);
+  writeFileAtomic(dir.policies() / "v2.json", policyJson(2));
+  fs::remove(dir.policies() / "active");
+  EXPECT_THROW(FilePolicyStore{dir.path()}, StorageError);
+  EXPECT_EQ(readFile(dir.policies() / "v1.json"), marker);
+  EXPECT_EQ(readFile(dir.policies() / "v2.json"), policyJson(2));
+  EXPECT_FALSE(fs::exists(dir.policies() / "active"));
+}
+
+TEST(PolicyStore, MissingPointerWithOnlyV1BootstrapsAgain) {
+  TempDir dir;
+  {
+    FilePolicyStore store(dir.path());
+  }
+  fs::remove(dir.policies() / "active");  // crash between v1.json and the pointer
+  FilePolicyStore reopened(dir.path());
+  EXPECT_EQ(reopened.active().version, 1);
+  EXPECT_EQ(readFile(dir.policies() / "active"), "1\n");
+}
