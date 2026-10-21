@@ -64,7 +64,9 @@ class DeployWorkflowTest(unittest.TestCase):
         blocks = run_blocks(self.text)
         self.assertGreaterEqual(len(blocks), 3, "run block parser found too few blocks")
         for line, body in blocks:
-            self.assertNotIn("secrets.", body, f"secret expression in run block at line {line}")
+            self.assertNotRegex(body, r"\bsecrets\b", f"secrets reference in run block at line {line}")
+            self.assertNotRegex(body, r"\$\{\{\s*(github|inputs)\.",
+                                f"github/inputs expression in run block at line {line}")
         # Secrets may only be assigned to env mappings: `NAME: ${{ secrets.NAME }}`.
         for number, line in enumerate(self.text.splitlines(), 1):
             if "secrets." in line:
@@ -73,8 +75,10 @@ class DeployWorkflowTest(unittest.TestCase):
 
     def test_run_block_parser_catches_inline_secret(self):
         bad = "steps:\n  - run: |\n      echo ${{ secrets.X }}\n  - run: echo ${{ secrets.Y }}\n"
-        found = [body for _, body in run_blocks(bad) if "secrets." in body]
+        found = [body for _, body in run_blocks(bad) if re.search(r"\bsecrets\b", body)]
         self.assertEqual(len(found), 2)
+        tricky = "steps:\n  - run: |\n      echo '${{ toJSON(secrets) }}' ${{ github.ref }}\n"
+        self.assertTrue([b for _, b in run_blocks(tricky) if re.search(r"\bsecrets\b", b)])
         good = "steps:\n  - run: |\n      echo \"$X\"\n    env:\n      X: ${{ secrets.X }}\n"
         self.assertFalse([b for _, b in run_blocks(good) if "secrets." in b])
 
@@ -91,6 +95,22 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertIn("workflow_dispatch", self.text)
         self.assertIn("concurrency:", self.text)
         self.assertIn("needs: build", self.text)
+
+    def test_only_main_tags_are_deployed(self):
+        self.assertRegex(self.text, r"if:\s*startsWith\(github\.ref,\s*'refs/tags/v'\)")
+        self.assertIn("git merge-base --is-ancestor", self.text)
+        self.assertIn("origin/main", self.text)
+        build = self.text.split("  deploy:")[0]
+        self.assertIn("merge-base", build)
+        self.assertIn("fetch-depth: 0", build)
+        deploy = self.text.split("  deploy:")[1]
+        self.assertNotIn("actions/checkout", deploy)
+
+    def test_timeouts_and_ssh_hardening(self):
+        self.assertEqual(self.text.count("timeout-minutes:"), 2)
+        for opt in ("ConnectTimeout=20", "ServerAliveInterval=15", "ServerAliveCountMax=4"):
+            self.assertIn(opt, self.text)
+        self.assertIn("-ExecutionPolicy Bypass", self.text)
 
     def test_key_files_have_mode_600(self):
         self.assertIn("umask 077", self.text)
@@ -127,6 +147,15 @@ class InstallServiceTest(unittest.TestCase):
                        "ErrorActionPreference", "AppRotateFiles", "AppExit"):
             self.assertIn(needle, self.text)
 
+    def test_deploy_user_can_stop_and_start(self):
+        # Stop-Service needs enumerate-dependents (SW), Start-Service needs query-config (CC).
+        self.assertIn("CCLCSWRPWPLORC", self.text)
+        self.assertNotIn("Contains($deploySid)", self.text)
+
+    def test_nssm_must_be_admin_only_location(self):
+        self.assertRegex(self.text, r"(?i)C:\\Users")
+        self.assertIn("AppStopMethodSkip' @('6')", self.text)
+
     def test_no_embedded_secrets(self):
         self.assertNotRegex(self.text, r"(?i)password\s*=\s*['\"][^'\"]+['\"]")
 
@@ -146,6 +175,13 @@ class RunbookTest(unittest.TestCase):
                        "token add mac-eugene", "PasswordAuthentication no", "8443",
                        "winget", "NSSM", "--out-dir C:\\warden\\data\\tls", "Rollback"):
             self.assertIn(needle, self.text)
+
+    def test_hardening_details(self):
+        for needle in ("sshd -t", "administrators_authorized_keys", "Selected tags", "v*.*.*",
+                       "ruleset", "-ExecutionPolicy Bypass", "--scope machine", "Program Files\\nssm",
+                       "-NoStart", "ABOVE", "SECOND"):
+            self.assertIn(needle, self.text)
+        self.assertNotIn("restart the service (`Restart-Service WardenServer`)", self.text)
 
     def test_no_real_hosts_or_keys(self):
         self.assertIn("<vps-ip>", self.text)

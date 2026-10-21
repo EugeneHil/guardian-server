@@ -55,26 +55,44 @@ Set-Content -Path $keys -Value '<paste the public key line here>' -Encoding asci
 icacls.exe $keys /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F'
 ```
 
-Harden `C:\ProgramData\ssh\sshd_config` (edit with an editor; keep a second admin session open until the check passes):
+Install your own public key too, otherwise you lose access once passwords are off and the `scp` commands in steps 4 and 5 fail. Members of Administrators use a shared file, not the profile:
+
+```powershell
+$admin = 'C:\ProgramData\ssh\administrators_authorized_keys'
+Add-Content -Path $admin -Value '<paste the owner public key line here>' -Encoding ascii
+icacls.exe $admin /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F'
+```
+
+Now edit `C:\ProgramData\ssh\sshd_config` in an editor. The stock file ends with a `Match Group administrators` block, and anything placed after a `Match` line belongs to that block (`AllowUsers` is not even valid there, so sshd would not start). Put the global directives ABOVE the first `Match` line, uncommenting or replacing the existing `#PasswordAuthentication yes` and similar lines:
 
 ```text
 PasswordAuthentication no
 PubkeyAuthentication yes
 PermitEmptyPasswords no
 AllowUsers warden-deploy <owner-user>
+```
 
+and add this block at the very end, after the existing `Match` blocks:
+
+```text
 Match User warden-deploy
     AuthorizedKeysFile __PROGRAMDATA__/ssh/warden-deploy_authorized_keys
 ```
 
+The configuration must validate before the restart, and you prove key login in a SECOND terminal before closing this session:
+
 ```powershell
+& "$env:SystemRoot\System32\OpenSSH\sshd.exe" -t      # no output = valid; fix the file if it prints anything
 Restart-Service sshd
 ```
+
+Keep the first session open. From the Mac, in a SECOND terminal, log in with each key (see the verification below) before you close the first session; if either fails, put `PasswordAuthentication yes` back, run `sshd -t`, restart sshd and fix the key files first.
 
 Verification (from the Mac):
 
 ```sh
 ssh -i ~/.ssh/warden-deploy -o BatchMode=yes warden-deploy@<vps-ip> "whoami"           # prints the deploy user
+ssh -o BatchMode=yes <owner-user>@<vps-ip> "whoami"                                      # owner key works
 ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password warden-deploy@<vps-ip>   # must be refused
 ```
 
@@ -97,6 +115,14 @@ Keep your remote-desktop rule if you administer the VPS through it (and restrict
 Set-NetFirewallRule -DisplayName 'Warden HTTPS' -RemoteAddress '<allowed-address-1>','<allowed-address-2>'
 ```
 
+Windows ships many inbound allow rules (file sharing, remote management, ping and more) that would defeat "only 22 and 8443". Review every enabled inbound allow rule and disable what you do not need, keeping remote desktop only if you use it (restricted to your address):
+
+```powershell
+Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow |
+  Select-Object DisplayName, Profile | Sort-Object DisplayName
+Disable-NetFirewallRule -DisplayName '<rule name to disable>'
+```
+
 Verification:
 
 ```powershell
@@ -110,17 +136,27 @@ From the Mac, `Test-NetConnection <vps-ip> -Port 22` (PowerShell) or `nc -vz <vp
 
 ```powershell
 winget install --id Microsoft.VCRedist.2015+.x64 --accept-package-agreements --accept-source-agreements
-winget install --id NSSM.NSSM --accept-package-agreements --accept-source-agreements
+winget install --id NSSM.NSSM --scope machine --accept-package-agreements --accept-source-agreements
 ```
+
+NSSM is a portable package, so winget may still place it under your own profile (`%LOCALAPPDATA%\Microsoft\WinGet`), where the service account cannot read it and where it is not admin-protected. `install-service.ps1` refuses such a path. Copy it to an admin-only location:
+
+```powershell
+$src = (Get-Command nssm.exe).Source        # wherever winget put it
+New-Item -ItemType Directory -Force 'C:\Program Files\nssm' | Out-Null
+Copy-Item $src 'C:\Program Files\nssm\nssm.exe' -Force
+```
+
+`C:\Program Files` is writable only by Administrators and TrustedInstaller by default. Pass `-Nssm 'C:\Program Files\nssm\nssm.exe'` in step 7.
 
 Open a new PowerShell so the PATH refreshes. Verification:
 
 ```powershell
 winget list --id Microsoft.VCRedist.2015+.x64
-nssm.exe version
+& 'C:\Program Files\nssm\nssm.exe' version
 ```
 
-If `nssm.exe` is not found, locate it (`Get-ChildItem "$env:ProgramFiles\WinGet","$env:LOCALAPPDATA\Microsoft\WinGet" -Recurse -Filter nssm.exe`) and pass the path to the install script with `-Nssm`.
+If `nssm.exe` is not found, locate it (`Get-ChildItem "$env:ProgramFiles\WinGet","$env:LOCALAPPDATA\Microsoft\WinGet" -Recurse -Filter nssm.exe`) and copy it as shown above.
 
 ## Step 4. Directory layout and base ACLs
 
@@ -157,7 +193,7 @@ Get-ChildItem C:\warden\scripts
 
 ## Step 5. Certificate on the VPS and the SPKI pin
 
-The first build must exist on the VPS before `warden-server` can run. Bootstrap it: run the `deploy` workflow's `build` job (Actions, `deploy`, Run workflow; the deploy job waits for approval, reject it for now), download the artifact `warden-server-zip` on your Mac, and upload it:
+The first build must exist on the VPS before `warden-server` can run. Bootstrap it: run the `deploy` workflow on the `main` branch after the PR is merged (Actions, `deploy`, Run workflow, branch `main`); only the `build` job runs, because the deploy job is skipped outside tag refs, download the artifact `warden-server-zip` on your Mac, and upload it:
 
 ```sh
 scp warden-server-<sha>.zip <owner-user>@<vps-ip>:C:/warden/incoming/
@@ -190,7 +226,7 @@ Copy-Item <path-to>\config.example.json C:\warden\config.local.json   # or paste
 notepad.exe C:\warden\config.local.json
 ```
 
-Set: `"allowInsecureHttp": false`, `"tls": { "certPath": "C:/warden/data/tls/server.crt", "keyPath": "C:/warden/data/tls/<private key file>" }`, `"dataDir": "C:/warden/data"`, `"webRoot": "C:/warden/web"`, and `"adminPassword"` to a long random password (at least 12 characters) that you store in your password manager. The key file next to the certificate in `data\tls` is the one `cert generate` wrote.
+Set: `"allowInsecureHttp": false`, `"tls": { "certPath": "C:/warden/data/tls/server.crt", "keyPath": "C:/warden/data/tls/<private-key file>" }`, `"dataDir": "C:/warden/data"`, `"webRoot": "C:/warden/web"`, and `"adminPassword"` to a long random password (at least 12 characters) that you store in your password manager. `<private-key file>` is the private-key file written by `cert generate` next to the certificate in `data\tls` (list the directory; `install-service.ps1` expects it there).
 
 Verification (without printing the password):
 
@@ -202,10 +238,12 @@ Select-String -Path C:\warden\config.local.json -Pattern 'allowInsecureHttp'
 ## Step 7. Register the service with NSSM
 
 ```powershell
-C:\warden\scripts\install-service.ps1 -DeployUser warden-deploy
+C:\warden\scripts\install-service.ps1 -DeployUser warden-deploy -Nssm 'C:\Program Files\nssm\nssm.exe'
 ```
 
-The script registers `WardenServer` (NSSM; application `C:\warden\bin\warden-server.exe`, arguments `serve --config C:\warden\config.local.json`, working directory `C:\warden`), sends stdout/stderr to `C:\warden\logs` with rotation, starts it at boot, restarts it 5 seconds after a failure, stops it with a console Ctrl-C (`AppStopMethodConsole`) for a clean shutdown, and runs it as the virtual account `NT SERVICE\WardenServer`: no password, no interactive logon, and the only account besides Administrators that can read the TLS private key and the config file. It also lets the deploy user start and stop this one service, and applies the ACLs described in step 4. Re-run it any time; it edits the existing service.
+The scripts are copied, not signed, so the deploy workflow calls `apply-update.ps1` with `-ExecutionPolicy Bypass`; start the install script the same way (`powershell -NoProfile -ExecutionPolicy Bypass -File ...`) if your execution policy blocks it.
+
+The script registers `WardenServer` (NSSM; application `C:\warden\bin\warden-server.exe`, arguments `serve --config C:\warden\config.local.json`, working directory `C:\warden`), sends stdout/stderr to `C:\warden\logs` with rotation, starts it at boot, restarts it 5 seconds after a failure, stops it with a console Ctrl-C (`AppStopMethodConsole`) for a clean shutdown, and runs it as the virtual account `NT SERVICE\WardenServer`: no password, no interactive logon, and the only account besides Administrators that can read the TLS private key and the config file. It also lets the deploy user start and stop this one service, and applies the ACLs described in step 4. Re-run it any time; it edits the existing service. A re-run restarts the service (a short downtime) unless you pass `-NoStart`, which leaves it stopped for you to start.
 
 Verification:
 
@@ -222,7 +260,10 @@ From the Mac: `Test-NetConnection <vps-ip> -Port 8443` succeeds.
 
 In the repository settings:
 
-1. Settings, Environments, New environment `production`. Add yourself as a required reviewer, restrict deployment to protected tags if you like.
+1. Settings, Environments, New environment `production`, and configure it. These settings are MANDATORY, because the environment approval is the only gate in front of the secrets:
+   - Required reviewers: the owner.
+   - Deployment branches and tags: "Selected branches and tags" with exactly one rule, "Selected tags": `v*.*.*`. No branch may deploy.
+   - Settings, Rules, Rulesets: add a tag ruleset for `v*` that restricts creation, update and deletion of matching tags to the owner (no bypass for others).
 2. In that environment add four secrets (environment secrets, not repository secrets):
 
 | Secret | Value |
@@ -245,7 +286,9 @@ ssh-keyscan -t ed25519 <vps-ip> | ssh-keygen -lf -   # fingerprint must equal th
 
 Only when the two fingerprints match, store the `ssh-keyscan` line as `VPS_KNOWN_HOSTS`. The workflow uses `StrictHostKeyChecking=yes` with that file, so SSH never trusts on first use; a changed host key fails the deploy. Delete the local private key copy after storing it in the secret if you do not need it elsewhere.
 
-Verification: push a throwaway tag only after merging, or run the `deploy` workflow manually and approve the `production` deployment. The `deploy` job must end with `[apply-update] Update applied.`
+The workflow adds its own guards: the `build` job fails unless the commit is reachable from `origin/main`, and the `deploy` job (the only one that sees the secrets, and it checks out no repository code) runs only for `refs/tags/v*`. A manual run (`workflow_dispatch`) on a branch therefore builds but never deploys; to redeploy, run the workflow on an existing tag ref (Run workflow, choose the tag).
+
+Verification: after merging to main, push a tag `vX.Y.Z` on a main commit and approve the `production` deployment. The `deploy` job must end with `[apply-update] Update applied.`
 
 ## Step 9. First token
 
@@ -259,7 +302,7 @@ The token is printed once. Copy it straight into the agent Settings on the Mac (
 C:\warden\bin\warden-server.exe token list --data-dir C:\warden\data      # mac-eugene and a creation time
 ```
 
-Then the agent's "test connection" in Settings must succeed. If the server still answers 401, restart the service (`Restart-Service WardenServer`).
+Then the agent's "test connection" in Settings must succeed. Tokens apply immediately (the server re-reads the agent store on every authentication, no restart). A 401 means a wrong token or a mismatching pin: check what was entered in the agent Settings.
 
 ## Deploying
 

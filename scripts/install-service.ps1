@@ -21,6 +21,8 @@
     logs                 service: modify
     local config file    service: read only; the deploy user has no access
   The deploy user may also start and stop this one service (service security descriptor).
+  NSSM must live in an admin-only location (for example C:\Program Files\nssm); a path under
+  C:\Users is refused. Re-running the script restarts the service unless -NoStart is given.
 
   The script contains no secrets and never reads the config file; the admin password stays in it.
 #>
@@ -60,7 +62,22 @@ $nssmCommand = Get-Command $Nssm -ErrorAction SilentlyContinue
 if (-not $nssmCommand) {
   throw "NSSM not found ('$Nssm'). Install it with: winget install NSSM.NSSM, then open a new shell or pass -Nssm <full path>."
 }
-$nssmPath = $nssmCommand.Source
+$nssmPath = [System.IO.Path]::GetFullPath($nssmCommand.Source)
+# The service ImagePath points at NSSM, so it must be readable by the service account and not
+# replaceable by non-admins. A portable winget install lands under the user profile: refuse it.
+if ($nssmPath -match '^(?i)[A-Z]:\\Users\\') {
+  throw "NSSM is at $nssmPath, inside a user profile. Copy nssm.exe to C:\Program Files\nssm\nssm.exe and pass -Nssm 'C:\Program Files\nssm\nssm.exe' (docs/vps-setup.md step 3)."
+}
+$nssmDir = Split-Path -Parent $nssmPath
+$adminSids = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+foreach ($rule in (Get-Acl -LiteralPath $nssmDir).Access) {
+  if ($rule.AccessControlType -ne 'Allow') { continue }
+  if (($rule.FileSystemRights -band ([System.Security.AccessControl.FileSystemRights]'WriteData, AppendData, Delete, ChangePermissions, TakeOwnership')) -eq 0) { continue }
+  $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+  if ($adminSids -notcontains $sid -and $sid -ne 'S-1-3-0') {
+    throw "NSSM directory $nssmDir is writable by $($rule.IdentityReference). Use an admin-only location such as C:\Program Files\nssm."
+  }
+}
 
 $exe = Join-Path $Root 'bin\warden-server.exe'
 # The file names are assembled so that this script does not spell out secret-looking file names.
@@ -126,8 +143,9 @@ Invoke-NssmSet 'AppExit' @('Default', 'Restart')
 Invoke-NssmSet 'AppRestartDelay' @('5000')
 Invoke-NssmSet 'AppThrottle' @('15000')
 # Stop with a console Ctrl-C so the server's signal handler shuts down cleanly (ADR 0002).
-# The other methods are disabled; NSSM terminates the process only if Ctrl-C times out.
-Invoke-NssmSet 'AppStopMethodSkip' @('0')
+# Skip value 6 = skip the window (2) and thread (4) methods; NSSM terminates the process only if
+# Ctrl-C times out.
+Invoke-NssmSet 'AppStopMethodSkip' @('6')
 Invoke-NssmSet 'AppStopMethodConsole' @('15000')
 Invoke-NssmSet 'AppStopMethodWindow' @('0')
 Invoke-NssmSet 'AppStopMethodThreads' @('0')
@@ -140,12 +158,15 @@ Invoke-Native 'sc config (service account)' {
 
 $sddl = ((sc.exe sdshow $ServiceName) -join '').Trim()
 if ($LASTEXITCODE -ne 0 -or -not $sddl.StartsWith('D:')) { throw "Cannot read the security descriptor of $ServiceName." }
-if (-not $sddl.Contains($deploySid)) {
-  $ace = "(A;;RPWPLCLORC;;;$deploySid)"
-  $sacl = $sddl.IndexOf('S:')
-  $sddl = if ($sacl -ge 0) { $sddl.Insert($sacl, $ace) } else { $sddl + $ace }
-  Invoke-Native 'sc sdset' { sc.exe sdset $ServiceName $sddl }
-}
+# Rights: CC query config, LC query status, SW enumerate dependents, RP start, WP stop, LO
+# interrogate, RC read control. Stop-Service reads dependent services (SW) and Start-Service reads
+# the services it depends on (CC), so both are required. Any existing ACE for this SID is replaced,
+# so a re-run repairs it; the SYSTEM and Administrators ACEs are left untouched.
+$ace = "(A;;CCLCSWRPWPLORC;;;$deploySid)"
+$sddl = [regex]::Replace($sddl, '\([^()]*;;;' + [regex]::Escape($deploySid) + '\)', '')
+$sacl = $sddl.IndexOf('S:')
+$sddl = if ($sacl -ge 0) { $sddl.Insert($sacl, $ace) } else { $sddl + $ace }
+Invoke-Native 'sc sdset' { sc.exe sdset $ServiceName $sddl }
 
 # --- ACLs ------------------------------------------------------------------------------------------
 
