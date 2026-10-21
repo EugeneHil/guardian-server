@@ -315,13 +315,17 @@ TEST_F(HttpServerTest, StopIsIdempotentAndFreesPort) {
 class RunnerThread {
  public:
   explicit RunnerThread(HttpServer& server)
-      : server_(server), thread_([this] { result_ = server_.run(); }) {}
+      : server_(&server), thread_([this, &server] { result_ = server.run(); }) {}
   RunnerThread(const RunnerThread&) = delete;
   RunnerThread& operator=(const RunnerThread&) = delete;
   ~RunnerThread() {
-    server_.stop();
+    if (server_ != nullptr) {
+      server_->stop();
+    }
     join();
   }
+  // The caller already stopped and destroyed the server; only the thread is left to join.
+  void detachServer() { server_ = nullptr; }
   bool join() {
     if (thread_.joinable()) {
       thread_.join();
@@ -330,7 +334,7 @@ class RunnerThread {
   }
 
  private:
-  HttpServer& server_;
+  HttpServer* server_;
   bool result_ = false;
   std::thread thread_;
 };
@@ -353,6 +357,25 @@ TEST_F(HttpServerTest, RunBlocksUntilStop) {
   EXPECT_TRUE(served);
   server.stop();
   EXPECT_TRUE(runner.join());  // clean stop-requested exit
+}
+
+// stop() must not return while run() can still touch the object: destroy it right away, many
+// times (meaningful under AddressSanitizer / ThreadSanitizer).
+TEST_F(HttpServerTest, DestroyingServerRightAfterStopIsSafe) {
+  for (int i = 0; i < 200; ++i) {
+    auto server = std::make_unique<HttpServer>(api_, plainOptions());
+    {
+      RunnerThread runner(*server);
+      // run() must be inside the object before it is destroyed (calling run() on a dead object
+      // is a caller bug); bound port means run() holds the server.
+      for (int spin = 0; spin < 20000 && server->port() == 0; ++spin) {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+      }
+      server->stop();
+      server.reset();  // destroyed immediately; the runner's own stop() is skipped (see below)
+      runner.detachServer();
+    }
+  }
 }
 
 TEST_F(HttpServerTest, StopBeforeRunMakesRunReturnPromptly) {

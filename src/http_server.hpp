@@ -43,6 +43,8 @@ class HttpServer {
   // Blocking variant for the CLI. Returns false on bind/TLS-load failure, true once serving
   // ended because stop() was called (also when stop() came before run() bound anything).
   bool run();
+  // Final: after stop(), or after a start() that failed once it had bound, start()/run() cannot be
+  // retried; construct a new HttpServer.
   // Idempotent and final: a stopped server cannot be started again. Releases the listening
   // socket, joins the serving thread and waits for a concurrent run() to unwind. It takes a
   // mutex, so it is NOT async-signal-safe: the CLI must call it from a watcher thread, never

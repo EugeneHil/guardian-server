@@ -305,8 +305,10 @@ bool HttpServer::run() {
     const std::scoped_lock lock(mutex_);
     stopped = stopRequested_;
     runActive_ = false;
+    // Notify while still holding the lock: once it is released, stop() may return and the
+    // caller may destroy this object. Nothing of *this is touched after this block.
+    runDone_.notify_all();
   }
-  runDone_.notify_all();
   return listened || stopped;
 }
 
