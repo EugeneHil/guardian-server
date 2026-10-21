@@ -45,6 +45,10 @@ Event makeEvent(const std::string& file) {
   return e;
 }
 
+// Namespace scope so lambdas can use them without capture (MSVC rejects implicit capture).
+constexpr int kThreads = 8;
+constexpr int kPerThread = 100;
+
 NowFn fixedNow() {
   return [] { return TimePoint{std::chrono::seconds(1792571400)}; };
 }
@@ -175,8 +179,6 @@ TEST(EventStore, ControlCharsRoundTrip) {
 TEST(EventStore, ConcurrentAppendsDoNotInterleaveLines) {
   const TempDir dir;
   FileEventStore store(dir.path(), fixedNow(), 8 * 1024, 50);
-  constexpr int kThreads = 8;
-  constexpr int kPerThread = 100;
   std::vector<std::thread> threads;
   for (int t = 0; t < kThreads; ++t) {
     threads.emplace_back([&store, t] {
