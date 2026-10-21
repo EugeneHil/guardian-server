@@ -201,6 +201,22 @@ TEST_F(HttpServerTest, PolicyEndpointEndToEndWithRealToken) {
   EXPECT_FALSE(ok->body.empty());
 }
 
+TEST_F(HttpServerTest, NotModifiedHasNoContentTypeOrBody) {
+  const std::string token = addAgent("agent-1");
+  HttpServer server(api_, tlsOptions());
+  ASSERT_TRUE(server.start());
+  auto client = tlsClient(server.port());
+  const auto first = client->Get("/api/v1/policy", authHeader("Bearer " + token));
+  ASSERT_TRUE(first);
+  httplib::Headers headers = authHeader("Bearer " + token);
+  headers.emplace("If-None-Match", first->get_header_value("ETag"));
+  const auto cached = client->Get("/api/v1/policy", headers);
+  ASSERT_TRUE(cached);
+  EXPECT_EQ(cached->status, 304);
+  EXPECT_TRUE(cached->body.empty());
+  EXPECT_FALSE(cached->has_header("Content-Type"));
+}
+
 TEST_F(HttpServerTest, AccessLogHasNoSecrets) {
   const std::string token = addAgent("agent-2");
   HttpServer server(api_, plainOptions());
