@@ -62,3 +62,17 @@ jobs:
         run: scripts/lint.sh
       - name: Coverage
         run: scripts/coverage.sh
+
+  tokens:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Script and panel tests
+        run: python3 -I -B -m unittest discover -s scripts
+      - name: Design tokens are current
+        run: python3 -I -B scripts/tokens.py --check
