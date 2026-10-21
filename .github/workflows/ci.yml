@@ -27,6 +27,16 @@ jobs:
             git -C $env:VCPKG_INSTALLATION_ROOT fetch origin
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check out vcpkg at the manifest baseline
+        shell: pwsh
+        run: |
+          # Ports and version files are read from the vcpkg working tree, so it must match the baseline.
+          $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+          if (-not $baseline) { throw 'vcpkg.json has no builtin-baseline' }
+          git -C $env:VCPKG_INSTALLATION_ROOT checkout --detach $baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:VCPKG_INSTALLATION_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Configure
         run: cmake --preset windows
       - name: Build
