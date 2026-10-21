@@ -133,8 +133,18 @@ class ApplyUpdateTest(unittest.TestCase):
 
     def test_loopback_only_certificate_skip(self):
         self.assertIn("127.0.0.1", self.text)
-        self.assertNotIn("ServicePointManager", self.text)
+        self.assertNotRegex(self.text, r"(?i)ServicePointManager\]::ServerCertificateValidationCallback")
         self.assertNotRegex(self.text, r"(?i)TrustAllCerts")
+
+    def test_probe_negotiates_tls12_on_windows_powershell(self):
+        # The server requires TLS 1.2; Windows PowerShell 5.1 may default to older protocols.
+        self.assertRegex(
+            self.text,
+            r"\[Net\.ServicePointManager\]::SecurityProtocol\s*=\s*\[Net\.ServicePointManager\]::SecurityProtocol"
+            r"\s*-bor\s*\[Net\.SecurityProtocolType\]::Tls12")
+
+    def test_consumed_archive_is_removed_after_success(self):
+        self.assertRegex(self.text, r"Remove-Item -LiteralPath \$zipFull")
 
 
 class InstallServiceTest(unittest.TestCase):
@@ -182,6 +192,20 @@ class RunbookTest(unittest.TestCase):
                        "-NoStart", "ABOVE", "SECOND"):
             self.assertIn(needle, self.text)
         self.assertNotIn("restart the service (`Restart-Service WardenServer`)", self.text)
+
+    def test_operator_guidance(self):
+        self.assertIn("Tls12", self.text)
+        self.assertNotIn("is not even valid", self.text)
+        self.assertIn("silently apply only to administrators", self.text)
+        self.assertNotIn("(or running the workflow by hand)", self.text)
+        self.assertIn("re-running it on an existing tag", self.text)
+        self.assertIn("lowercase", self.text)
+        self.assertIn("scp config.example.json", self.text)
+        self.assertIn("incoming", self.text.split("## Deploying")[1])
+        bootstrap = [l for l in self.text.splitlines() if l.rstrip().endswith("-Bootstrap")]
+        self.assertTrue(bootstrap)
+        for line in bootstrap:
+            self.assertIn("-ExecutionPolicy Bypass", line)
 
     def test_no_real_hosts_or_keys(self):
         self.assertIn("<vps-ip>", self.text)

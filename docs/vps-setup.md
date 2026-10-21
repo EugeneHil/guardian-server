@@ -63,7 +63,7 @@ Add-Content -Path $admin -Value '<paste the owner public key line here>' -Encodi
 icacls.exe $admin /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F'
 ```
 
-Now edit `C:\ProgramData\ssh\sshd_config` in an editor. The stock file ends with a `Match Group administrators` block, and anything placed after a `Match` line belongs to that block (`AllowUsers` is not even valid there, so sshd would not start). Put the global directives ABOVE the first `Match` line, uncommenting or replacing the existing `#PasswordAuthentication yes` and similar lines:
+Now edit `C:\ProgramData\ssh\sshd_config` in an editor. The stock file ends with a `Match Group administrators` block, and anything placed after a `Match` line belongs to that block (sshd would still start, but directives below `Match Group administrators` silently apply only to administrators, so password authentication would stay on for the deploy user). Put the global directives ABOVE the first `Match` line, uncommenting or replacing the existing `#PasswordAuthentication yes` and similar lines:
 
 ```text
 PasswordAuthentication no
@@ -71,6 +71,8 @@ PubkeyAuthentication yes
 PermitEmptyPasswords no
 AllowUsers warden-deploy <owner-user>
 ```
+
+Write `<owner-user>` in lowercase: Windows OpenSSH matches `AllowUsers` names against the lowercased account name, so a mixed-case entry can lock you out.
 
 and add this block at the very end, after the existing `Match` blocks:
 
@@ -200,7 +202,7 @@ scp warden-server-<sha>.zip <owner-user>@<vps-ip>:C:/warden/incoming/
 ```
 
 ```powershell
-powershell -NoProfile -File C:\warden\scripts\apply-update.ps1 -Zip C:\warden\incoming\warden-server-<sha>.zip -Bootstrap
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\warden\scripts\apply-update.ps1 -Zip C:\warden\incoming\warden-server-<sha>.zip -Bootstrap
 C:\warden\bin\warden-server.exe version
 ```
 
@@ -219,10 +221,14 @@ C:\warden\bin\warden-server.exe cert pin C:\warden\data\tls\server.crt    # same
 
 ## Step 6. Local config file
 
-Create `C:\warden\config.local.json` by hand from `config.example.json` (the file is ignored by git; never commit or paste it). Edit it on the VPS in an editor:
+The release archive does not ship the template, so copy it from your checkout first. Create `C:\warden\config.local.json` by hand from `config.example.json` (the file is ignored by git; never commit or paste it). Edit it on the VPS in an editor:
+
+```sh
+scp config.example.json <owner-user>@<vps-ip>:C:/warden/config.example.json   # on the Mac, from the repository checkout
+```
 
 ```powershell
-Copy-Item <path-to>\config.example.json C:\warden\config.local.json   # or paste the template, then edit
+Copy-Item C:\warden\config.example.json C:\warden\config.local.json
 notepad.exe C:\warden\config.local.json
 ```
 
@@ -306,7 +312,7 @@ Then the agent's "test connection" in Settings must succeed. Tokens apply immedi
 
 ## Deploying
 
-Pushing a tag `vX.Y.Z` (or running the workflow by hand) builds Release, runs the tests, waits for your approval of the `production` environment, uploads the archive to `C:\warden\incoming` and runs `apply-update.ps1`. The script accepts only an archive inside `C:\warden\incoming` that contains `warden-server.exe` and `web/` and nothing else, stops the service, keeps the old files in `bin.prev` and `web.prev`, installs the new ones, and polls `https://127.0.0.1:8443/healthz` for 30 seconds. If the new build does not answer 200, it restores the previous files, restarts the service and exits with status 1 (the workflow fails).
+Pushing a tag `vX.Y.Z` (or re-running it on an existing tag) builds Release, runs the tests, waits for your approval of the `production` environment, uploads the archive to `C:\warden\incoming` and runs `apply-update.ps1`. The script accepts only an archive inside `C:\warden\incoming` that contains `warden-server.exe` and `web/` and nothing else, stops the service, keeps the old files in `bin.prev` and `web.prev`, installs the new ones, and polls `https://127.0.0.1:8443/healthz` for 30 seconds. The probe in Windows PowerShell 5.1 (the default shell of the SSH session) explicitly enables TLS 1.2 (`Tls12`) for its own process, because the server accepts nothing older; without it every deploy would time out and roll back. After a successful update the script deletes the consumed archive from `incoming`; after a failed one the archive stays for inspection, so clean `C:\warden\incoming` by hand after you are done. If the new build does not answer 200, it restores the previous files, restarts the service and exits with status 1 (the workflow fails).
 
 ## Rollback
 

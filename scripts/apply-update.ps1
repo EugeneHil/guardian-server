@@ -70,9 +70,12 @@ function Copy-Contents([string]$From, [string]$To) {
 # The certificate of the local server is self-signed, so the probe skips validation. The skip is
 # confined to the fixed loopback URL below: PowerShell 7 uses -SkipCertificateCheck on that URL
 # only; Windows PowerShell 5.1 uses a per-request callback that accepts a certificate only when
-# the request targets 127.0.0.1. No process-wide certificate validation setting is changed.
+# the request targets 127.0.0.1. No process-wide certificate validation setting is changed. The
+# server requires TLS 1.2, which Windows PowerShell 5.1 may not offer by default, so that branch
+# adds Tls12 to the (process-local) protocol list.
 function Initialize-LoopbackProbe {
   if ($PSVersionTable.PSVersion.Major -ge 6) { return }
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   if ('WardenLoopbackProbe' -as [type]) { return }
   Add-Type -TypeDefinition @'
 using System;
@@ -246,6 +249,8 @@ try {
   Write-Step "Waiting up to $HealthTimeoutSeconds s for https://127.0.0.1:$Port/healthz"
   if (-not (Wait-Healthy)) { throw 'The new build did not become healthy in time.' }
   Write-Step 'Update applied.'
+  # The archive is consumed; keep incoming\ from filling up. A failure here must not roll back.
+  Remove-Item -LiteralPath $zipFull -Force -ErrorAction SilentlyContinue
 } catch {
   Write-Host "[apply-update] FAILED: $($_.Exception.Message)"
   if (-not $Bootstrap) {
