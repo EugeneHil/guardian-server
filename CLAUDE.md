@@ -15,4 +15,4 @@ Warden — lightweight Endpoint DLP for macOS. Design: `warden-macos/docs/superp
 
 ## Guard hook
 
-`tooling/claude/guard.py` runs before every Read/Edit/Write/Bash call and enforces the secret and branch rules above. Do not disable it. Tests: `python3 -I -m unittest discover -s tooling/claude`.
+`tooling/claude/guard.py` runs before every Read/Edit/Write/Bash call and enforces the secret and branch rules above. Do not disable it. Tests: `python3 -I -B -m unittest discover -s tooling/claude`.
