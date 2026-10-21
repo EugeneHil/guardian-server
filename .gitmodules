@@ -1,0 +1,3 @@
+[submodule "external/warden-core"]
+	path = external/warden-core
+	url = https://github.com/EugeneHil/warden-core.git
