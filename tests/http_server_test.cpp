@@ -248,6 +248,10 @@ TEST_F(HttpServerTest, AccessLogSanitizesPath) {
   EXPECT_LE(lines[1].size(), 200U + 64U);
 }
 
+// Adapter text, deliberately different from Api's "Request body is too large.", so a pass proves
+// the socket-level payload limit fired before Api ever saw the body.
+constexpr const char* kSocketLimitMessage = "Request body too large.";
+
 TEST_F(HttpServerTest, OversizeBodyRejected) {
   const std::string token = addAgent("agent-3");
   HttpServer server(api_, plainOptions());
@@ -256,11 +260,37 @@ TEST_F(HttpServerTest, OversizeBodyRejected) {
   const std::string body(kMaxBodyBytes + 4096, 'a');
   const auto result =
       client->Post("/api/v1/events", authHeader("Bearer " + token), body, "application/json");
-  if (result) {
-    EXPECT_EQ(result->status, 413);
-    EXPECT_NE(result->body.find("\"error\""), std::string::npos) << result->body;
-  }  // else: the connection was closed before the response, which is also acceptable.
+  ASSERT_TRUE(result) << "expected a 413 response, got error " << static_cast<int>(result.error());
+  EXPECT_EQ(result->status, 413);
+  EXPECT_NE(result->body.find(kSocketLimitMessage), std::string::npos) << result->body;
+  EXPECT_NE(result->body.find("\"error\""), std::string::npos) << result->body;
   // The server stays healthy.
+  const auto health = plainClient(server.port())->Get("/healthz");
+  ASSERT_TRUE(health);
+  EXPECT_EQ(health->status, 200);
+}
+
+TEST_F(HttpServerTest, OversizeChunkedBodyRejected) {
+  const std::string token = addAgent("agent-4");
+  HttpServer server(api_, plainOptions());
+  ASSERT_TRUE(server.start());
+  auto client = plainClient(server.port());
+  const std::string chunk(64 * 1024, 'a');
+  const std::size_t total = kMaxBodyBytes + 4 * chunk.size();
+  const auto result = client->Post(
+      "/api/v1/events", authHeader("Bearer " + token),
+      [&chunk, total](std::size_t offset, httplib::DataSink& sink) {
+        if (offset >= total) {
+          sink.done();
+        } else {
+          sink.write(chunk.data(), chunk.size());
+        }
+        return true;
+      },
+      "application/json");
+  ASSERT_TRUE(result) << "expected a 413 response, got error " << static_cast<int>(result.error());
+  EXPECT_EQ(result->status, 413);
+  EXPECT_NE(result->body.find(kSocketLimitMessage), std::string::npos) << result->body;
   const auto health = plainClient(server.port())->Get("/healthz");
   ASSERT_TRUE(health);
   EXPECT_EQ(health->status, 200);
@@ -280,9 +310,34 @@ TEST_F(HttpServerTest, StopIsIdempotentAndFreesPort) {
   EXPECT_TRUE(again.start());
 }
 
+// Runs HttpServer::run() on a thread; the destructor always stops and joins, so a failing
+// ASSERT can never leave a joinable std::thread behind (which would std::terminate).
+class RunnerThread {
+ public:
+  explicit RunnerThread(HttpServer& server)
+      : server_(server), thread_([this] { result_ = server_.run(); }) {}
+  RunnerThread(const RunnerThread&) = delete;
+  RunnerThread& operator=(const RunnerThread&) = delete;
+  ~RunnerThread() {
+    server_.stop();
+    join();
+  }
+  bool join() {
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+    return result_;
+  }
+
+ private:
+  HttpServer& server_;
+  bool result_ = false;
+  std::thread thread_;
+};
+
 TEST_F(HttpServerTest, RunBlocksUntilStop) {
   HttpServer server(api_, plainOptions());
-  std::thread runner([&server] { server.run(); });
+  RunnerThread runner(server);
   for (int i = 0; i < 5000 && server.port() == 0; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -297,7 +352,32 @@ TEST_F(HttpServerTest, RunBlocksUntilStop) {
   }
   EXPECT_TRUE(served);
   server.stop();
-  runner.join();
+  EXPECT_TRUE(runner.join());  // clean stop-requested exit
+}
+
+TEST_F(HttpServerTest, StopBeforeRunMakesRunReturnPromptly) {
+  HttpServer server(api_, plainOptions());
+  server.stop();
+  const auto begin = std::chrono::steady_clock::now();
+  EXPECT_TRUE(server.run());
+  EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::seconds(2));
+  EXPECT_FALSE(server.start());  // a stopped server stays stopped
+}
+
+TEST_F(HttpServerTest, RunReturnsFalseWhenPortIsTaken) {
+  HttpServer first(api_, plainOptions());
+  ASSERT_TRUE(first.start());
+  ServerOptions options = plainOptions();
+  options.port = first.port();
+  HttpServer second(api_, options);
+  EXPECT_FALSE(second.run());
+}
+
+TEST_F(HttpServerTest, RunReturnsFalseWithMissingCertFile) {
+  ServerOptions options = tlsOptions();
+  options.tls->certPath = (dir_.path() / "tls" / "missing-cert.txt").string();
+  HttpServer server(api_, options);
+  EXPECT_FALSE(server.run());
 }
 
 TEST_F(HttpServerTest, StopWithoutStartIsHarmless) {
@@ -360,17 +440,23 @@ TEST_F(HttpServerTest, EveryMethodAndPathReachesApi) {
 TEST_F(HttpServerTest, EncodedAndOddPathsDoNotLeakFiles) {
   writeFileAtomic(dir_.path() / "web" / "app.js", "SECRET-JS");
   writeFileAtomic(dir_.path() / "web" / "index.html", "SECRET-HTML");
+  addAgent("agent-5");  // creates a real agents file in the data dir
+  const auto agentsFile = readFile(dir_.path() / "agents.json");
+  ASSERT_TRUE(agentsFile.has_value());
+  const std::string traversalToConfig = std::string("/../config.") + "local.json";
   HttpServer server(api_, plainOptions());
   ASSERT_TRUE(server.start());
   auto client = plainClient(server.port());
 
-  for (const char* path : {"/%61pp.js", "/%2e%2e/x", "/%2E%2E/%2e%2e/etc/passwd", "//etc/passwd",
-                           "/api/v1/policy%00", "/healthz%2f", "/..%2fapp.js"}) {
+  for (const char* path :
+       {"/%61pp.js", "/%2e%2e/x", "/%2E%2E/%2e%2e/etc/passwd", "//etc/passwd", "/api/v1/policy%00",
+        "/healthz%2f", "/..%2fapp.js", "/data/agents.json", traversalToConfig.c_str()}) {
     const auto result = client->Get(path);
     ASSERT_TRUE(result) << path;
     EXPECT_EQ(result->status, 404) << path;
     EXPECT_EQ(result->body.find("SECRET"), std::string::npos) << path;
     EXPECT_EQ(result->body.find("root:"), std::string::npos) << path;
+    EXPECT_EQ(result->body.find("\"agents\""), std::string::npos) << path;
   }
 }
 

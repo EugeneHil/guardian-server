@@ -200,7 +200,7 @@ bool HttpServer::bind() {
   }
 
   server->set_socket_options(exclusiveSocketOptions);
-  server->set_payload_max_length(kMaxBodyBytes);
+  server->set_payload_max_length(kMaxBodyBytes);  // socket-level 1 MiB cap, before Api sees a byte
   server->set_read_timeout(kReadTimeoutSeconds);
   server->set_write_timeout(kWriteTimeoutSeconds);
 
@@ -261,7 +261,7 @@ bool HttpServer::start() {
   std::shared_ptr<httplib::Server> server;
   try {
     const std::scoped_lock lock(mutex_);
-    if (server_ || !bind()) {
+    if (stopRequested_ || server_ || !bind()) {
       return false;
     }
     server = server_;
@@ -283,23 +283,31 @@ int HttpServer::port() const {
   return port_;
 }
 
-void HttpServer::run() {
+bool HttpServer::run() {
   std::shared_ptr<httplib::Server> server;
   try {
     const std::scoped_lock lock(mutex_);
+    if (stopRequested_) {
+      return true;  // stop() arrived before we bound: nothing to serve, clean exit
+    }
     if (server_ || !bind()) {
-      return;
+      return false;
     }
     server = server_;
+    runActive_ = true;
   } catch (...) {
     stop();
-    return;
+    return false;
   }
-  server->listen_after_bind();
-  const std::scoped_lock lock(mutex_);
-  if (server_ == server) {
-    server_.reset();
+  const bool listened = server->listen_after_bind();
+  bool stopped = false;
+  {
+    const std::scoped_lock lock(mutex_);
+    stopped = stopRequested_;
+    runActive_ = false;
   }
+  runDone_.notify_all();
+  return listened || stopped;
 }
 
 void HttpServer::stop() {
@@ -307,6 +315,7 @@ void HttpServer::stop() {
   std::thread thread;
   {
     const std::scoped_lock lock(mutex_);
+    stopRequested_ = true;
     server = std::move(server_);
     thread = std::move(thread_);
     server_.reset();
@@ -317,6 +326,9 @@ void HttpServer::stop() {
   if (thread.joinable()) {
     thread.join();
   }
+  // Wait for a concurrent run() to unwind so the caller may destroy the object afterwards.
+  std::unique_lock lock(mutex_);
+  runDone_.wait(lock, [this] { return !runActive_; });
 }
 
 }  // namespace warden::server

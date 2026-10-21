@@ -1,5 +1,6 @@
 #pragma once
 
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -39,9 +40,13 @@ class HttpServer {
   bool start();
   // Bound port after a successful start() or run() has bound; 0 before.
   [[nodiscard]] int port() const;
-  // Blocking variant for the CLI: returns when stop() is called or on failure.
-  void run();
-  // Idempotent; releases the listening socket and joins the serving thread.
+  // Blocking variant for the CLI. Returns false on bind/TLS-load failure, true once serving
+  // ended because stop() was called (also when stop() came before run() bound anything).
+  bool run();
+  // Idempotent and final: a stopped server cannot be started again. Releases the listening
+  // socket, joins the serving thread and waits for a concurrent run() to unwind. It takes a
+  // mutex, so it is NOT async-signal-safe: the CLI must call it from a watcher thread, never
+  // from a signal handler, and never from the accessLog callback (deadlock).
   void stop();
 
  private:
@@ -55,6 +60,9 @@ class HttpServer {
   std::shared_ptr<httplib::Server> server_;
   std::thread thread_;
   int port_ = 0;
+  bool stopRequested_ = false;
+  bool runActive_ = false;
+  std::condition_variable runDone_;
 };
 
 }  // namespace warden::server
