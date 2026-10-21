@@ -105,3 +105,10 @@ TEST(Spki, RejectsGarbagePem) {
   EXPECT_THROW(spkiPin("not a pem"), CryptoError);
   EXPECT_THROW(spkiPin(""), CryptoError);
 }
+
+TEST(SelfSignedCert, RejectsInvalidValidity) {
+  EXPECT_THROW(generateSelfSignedCert("warden.example", 0), CryptoError);
+  EXPECT_THROW(generateSelfSignedCert("warden.example", -1), CryptoError);
+  EXPECT_THROW(generateSelfSignedCert("warden.example", 36501), CryptoError);
+  EXPECT_NO_THROW(generateSelfSignedCert("warden.example", 36500));
+}

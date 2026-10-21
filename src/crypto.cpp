@@ -220,7 +220,7 @@ std::optional<std::string> base64Decode(std::string_view text) {
 }
 
 CertPair generateSelfSignedCert(std::string_view host, int validDays) {
-  if (host.empty() || validDays <= 0) {
+  if (host.empty() || validDays < 1 || validDays > 36500) {
     throw CryptoError("invalid certificate parameters");
   }
   const std::string hostStr{host};
@@ -248,8 +248,7 @@ CertPair generateSelfSignedCert(std::string_view host, int validDays) {
   }
 
   if (X509_gmtime_adj(X509_getm_notBefore(cert.get()), -60) == nullptr ||
-      X509_gmtime_adj(X509_getm_notAfter(cert.get()),
-                      static_cast<long>(validDays) * 24L * 60L * 60L) == nullptr) {
+      X509_time_adj_ex(X509_getm_notAfter(cert.get()), validDays, 0, nullptr) == nullptr) {
     fail("validity failed");
   }
 

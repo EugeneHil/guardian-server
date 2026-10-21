@@ -159,8 +159,17 @@ std::optional<TimePoint> parseUtc(std::string_view text) {
                                  (static_cast<std::int64_t>(*minute) * 60) +
                                  static_cast<std::int64_t>(*second);
   const std::int64_t secs = (days * kSecondsPerDay) + timeOfDay;
-  return TimePoint{std::chrono::duration_cast<TimePoint::duration>(
-      std::chrono::seconds{secs} + std::chrono::nanoseconds{nanos})};
+  // Range-check before converting: seconds -> ticks must not overflow TimePoint::duration::rep.
+  // The limits are floored to whole seconds; the boundary seconds themselves are rejected so the
+  // fraction cannot push the sum past the representable range.
+  const auto minSecs = std::chrono::duration_cast<std::chrono::seconds>(TimePoint::duration::min());
+  const auto maxSecs = std::chrono::duration_cast<std::chrono::seconds>(TimePoint::duration::max());
+  if (secs <= minSecs.count() || secs >= maxSecs.count()) {
+    return std::nullopt;
+  }
+  return TimePoint{
+      std::chrono::duration_cast<TimePoint::duration>(std::chrono::seconds{secs}) +
+      std::chrono::duration_cast<TimePoint::duration>(std::chrono::nanoseconds{nanos})};
 }
 
 }  // namespace warden::server
