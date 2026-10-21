@@ -6,6 +6,7 @@
       "Read(**/*.pem)",
       "Read(**/*.key)",
       "Read(**/*.p12)",
+      "Read(**/*.cer)",
       "Read(**/config.local.json)"
     ]
   },
@@ -16,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/tooling/claude/guard.py\""
+            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/tooling/claude/guard.py\" || exit 2"
           }
         ]
       }

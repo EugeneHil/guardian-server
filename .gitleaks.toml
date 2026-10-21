@@ -3,6 +3,7 @@ title = "warden gitleaks config"
 [extend]
 useDefault = true
 
+# No path allowlist: a real secret copied into .env.example must still be caught.
 [allowlist]
-description = "Committed example configs contain placeholders only"
-paths = ['''\.env\.example$''', '''config\.example\.json$''']
+description = "Obvious placeholders in committed example configs"
+stopwords = ["changeme", "placeholder", "your-token-here", "example-only"]

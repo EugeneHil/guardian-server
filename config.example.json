@@ -1,0 +1,13 @@
+{
+  "_comment": "Template with placeholders only. Copy to config.local.json, set adminPassword (12+ characters) and the TLS paths, or set allowInsecureHttp on a loopback host. Environment variables WARDEN_* override these values.",
+  "host": "0.0.0.0",
+  "port": 8443,
+  "tls": {
+    "certPath": "path/to/server-certificate",
+    "keyPath": "path/to/server-private-key"
+  },
+  "allowInsecureHttp": false,
+  "dataDir": "data",
+  "webRoot": "web",
+  "adminPassword": ""
+}
