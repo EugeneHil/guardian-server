@@ -117,6 +117,33 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertIn("chmod 600", self.text)
 
 
+class ReleasePresetTest(unittest.TestCase):
+    def test_ci_builds_release_in_the_same_job_and_deploy_uses_same_preset(self):
+        ci = read(".github", "workflows", "ci.yml")
+        deploy = read(".github", "workflows", "deploy.yml")
+        windows_job = ci.split("  server-windows:")[1].split("  server-quality:")[0]
+        for name in ("Configure (Release)", "Build (Release)", "Test (Release)"):
+            self.assertIn(name, windows_job)
+        for text in (windows_job, deploy):
+            self.assertIn("cmake --preset windows-release", text)
+            self.assertIn("cmake --build --preset windows-release", text)
+            self.assertIn("ctest --preset windows-release", text)
+        self.assertNotIn("-DCMAKE_BUILD_TYPE=Release", deploy)
+        self.assertIn("build/windows-release/warden-server.exe", deploy)
+        self.assertNotIn("matrix", ci)
+        for job in ("server-windows", "server-quality", "tokens"):
+            self.assertIn("  %s:" % job, ci)
+
+    def test_release_presets_exist(self):
+        import json
+        presets = json.loads(read("CMakePresets.json"))
+        configure = {p["name"]: p for p in presets["configurePresets"]}
+        self.assertEqual(configure["windows-release"]["inherits"], "windows")
+        self.assertEqual(configure["windows-release"]["cacheVariables"]["CMAKE_BUILD_TYPE"], "Release")
+        for kind in ("buildPresets", "testPresets"):
+            self.assertIn("windows-release", [p["name"] for p in presets[kind]])
+
+
 class ApplyUpdateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

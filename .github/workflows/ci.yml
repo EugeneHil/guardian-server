@@ -43,6 +43,13 @@ jobs:
         run: cmake --build --preset windows
       - name: Test
         run: ctest --preset windows
+      # MSVC /W4 /WX has optimizer-only warnings, so the Release build the deploy ships is checked here too.
+      - name: Configure (Release)
+        run: cmake --preset windows-release
+      - name: Build (Release)
+        run: cmake --build --preset windows-release
+      - name: Test (Release)
+        run: ctest --preset windows-release
 
   server-quality:
     runs-on: macos-latest

@@ -49,18 +49,18 @@ jobs:
           & "$env:VCPKG_INSTALLATION_ROOT\bootstrap-vcpkg.bat" -disableMetrics
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Configure (Release)
-        run: cmake --preset windows -DCMAKE_BUILD_TYPE=Release
+        run: cmake --preset windows-release
       - name: Build
-        run: cmake --build --preset windows
+        run: cmake --build --preset windows-release
       - name: Test
-        run: ctest --preset windows
+        run: ctest --preset windows-release
       - name: Package
         shell: pwsh
         run: |
           # The archive holds exactly warden-server.exe and web/; apply-update.ps1 rejects anything else.
           $stage = Join-Path $env:RUNNER_TEMP 'package'
           New-Item -ItemType Directory -Path $stage | Out-Null
-          Copy-Item build/windows/warden-server.exe $stage
+          Copy-Item build/windows-release/warden-server.exe $stage
           Copy-Item web (Join-Path $stage 'web') -Recurse
           New-Item -ItemType Directory -Path dist | Out-Null
           $name = "warden-server-$($env:GITHUB_SHA.Substring(0, 12)).zip"
