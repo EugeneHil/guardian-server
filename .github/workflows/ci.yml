@@ -16,6 +16,17 @@ jobs:
         with:
           submodules: recursive
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Fetch vcpkg history
+        shell: pwsh
+        run: |
+          # The preinstalled vcpkg clone may be old or shallow and lack the manifest baseline commit.
+          $shallow = git -C $env:VCPKG_INSTALLATION_ROOT rev-parse --is-shallow-repository
+          if ($shallow -eq 'true') {
+            git -C $env:VCPKG_INSTALLATION_ROOT fetch --unshallow origin
+          } else {
+            git -C $env:VCPKG_INSTALLATION_ROOT fetch origin
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Configure
         run: cmake --preset windows
       - name: Build
