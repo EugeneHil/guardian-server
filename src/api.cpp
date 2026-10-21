@@ -91,7 +91,10 @@ HttpResponse errorResponse(int status, const std::string& code, const std::strin
   return jsonResponse(status, nlohmann::json{{"error", code}, {"message", message}});
 }
 
-Api::Api(ApiDeps deps) : deps_(std::move(deps)) { registerAgentRoutes(routes_); }
+Api::Api(ApiDeps deps) : deps_(std::move(deps)) {
+  registerAgentRoutes(routes_);
+  registerAdminRoutes(routes_);
+}
 
 HttpResponse Api::handle(const HttpRequest& request) const noexcept {
   HttpResponse response;

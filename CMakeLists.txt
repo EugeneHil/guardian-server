@@ -17,6 +17,7 @@ add_subdirectory(external/warden-core)
 
 # Later tasks append their source files here.
 set(WARDEN_SERVER_SOURCES
+    src/admin_routes.cpp
     src/agent_routes.cpp
     src/agent_store.cpp
     src/api.cpp
@@ -28,6 +29,7 @@ set(WARDEN_SERVER_SOURCES
     src/file_policy_store.cpp
     src/fs_util.cpp
     src/policy_service.cpp
+    src/static_files.cpp
     src/timeutil.cpp
     src/version.cpp
 )

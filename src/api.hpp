@@ -62,6 +62,7 @@ HttpResponse jsonResponse(int status, const nlohmann::json& body);
 
 // Registered by Api's constructor.
 void registerAgentRoutes(RouteTable& table);
+void registerAdminRoutes(RouteTable& table);
 
 class Api {
  public:
