@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Warden</title>
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/panel.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="brand">Warden</h1>
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button type="button" role="tab" id="tab-policy" class="tab" aria-controls="panel-policy" aria-selected="true" tabindex="0">Policy</button>
+      <button type="button" role="tab" id="tab-events" class="tab" aria-controls="panel-events" aria-selected="false" tabindex="-1">Events</button>
+    </div>
+  </header>
+
+  <p id="notice" class="notice" role="alert" hidden></p>
+
+  <main>
+    <section id="panel-policy" role="tabpanel" aria-labelledby="tab-policy" class="panel">
+      <div class="row">
+        <h2>Active policy</h2>
+        <span id="active-badge" class="badge">Active v?</span>
+      </div>
+      <table class="data">
+        <caption class="visually-hidden">Rules of the active policy</caption>
+        <thead>
+          <tr><th scope="col">ID</th><th scope="col">Description</th><th scope="col">Targets</th><th scope="col">Processes</th><th scope="col">Action</th></tr>
+        </thead>
+        <tbody id="rules-body"></tbody>
+      </table>
+
+      <h2>Draft</h2>
+      <label for="draft-text" class="label">Policy JSON</label>
+      <textarea id="draft-text" class="editor" spellcheck="false" rows="18" autocomplete="off"></textarea>
+      <div class="row">
+        <button type="button" id="save-draft" class="button">Save draft</button>
+        <button type="button" id="publish" class="button primary" disabled>Publish</button>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <ul id="errors" class="errors"></ul>
+    </section>
+
+    <section id="panel-events" role="tabpanel" aria-labelledby="tab-events" class="panel" hidden>
+      <div class="row">
+        <h2>Recent events</h2>
+        <span id="events-updated" class="muted"></span>
+      </div>
+      <table class="data">
+        <caption class="visually-hidden">Recent access events, newest first</caption>
+        <thead>
+          <tr><th scope="col">Time</th><th scope="col">Agent</th><th scope="col">Process</th><th scope="col">File</th><th scope="col">Decision</th><th scope="col">Rule</th></tr>
+        </thead>
+        <tbody id="events-body"></tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

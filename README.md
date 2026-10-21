@@ -17,10 +17,22 @@ scripts/coverage.sh             # line-coverage gate, MIN_COVERAGE defaults to 8
 python3 -I -B -m unittest discover -s scripts   # coverage gate tests
 ```
 
+## Admin panel
+
+The server serves a dependency-free admin panel (`web/index.html`, `app.js`, `panel.css`, `tokens.css`) from `webRoot` at `/`; the browser's Basic-auth prompt supplies the admin credentials. The panel builds its DOM with `textContent` only and works under the CSP `default-src 'self'`.
+
+`web/tokens.css` is generated from the warden-core design tokens. After updating the submodule, regenerate it and commit the result; CI fails when it is stale:
+
+```sh
+python3 -I -B scripts/tokens.py          # regenerate web/tokens.css
+python3 -I -B scripts/tokens.py --check  # exit 1 if it is stale
+```
+
 ## Layout
 
 - `src/` server sources (`main.cpp` is the thin entry point)
 - `tests/` GoogleTest unit tests (`*_test.cpp`)
 - `external/warden-core` shared rule engine (git submodule)
 - `cmake/` warnings and dependency modules
-- `scripts/` lint and coverage gates
+- `web/` admin panel (static files)
+- `scripts/` lint, coverage and design-token gates
