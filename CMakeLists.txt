@@ -17,6 +17,7 @@ add_subdirectory(external/warden-core)
 
 # Later tasks append their source files here.
 set(WARDEN_SERVER_SOURCES
+    src/config.cpp
     src/crypto.cpp
     src/fs_util.cpp
     src/timeutil.cpp
@@ -40,6 +41,8 @@ if(WARDEN_SERVER_BUILD_TESTS)
     include(GoogleTest)
     file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*_test.cpp")
     add_executable(warden_tests ${TEST_SOURCES})
+    target_compile_definitions(warden_tests PRIVATE
+        WARDEN_SERVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     target_include_directories(warden_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(warden_tests PRIVATE warden_server_lib warden_warnings GTest::gtest_main)
     gtest_discover_tests(warden_tests DISCOVERY_TIMEOUT 60 PROPERTIES TIMEOUT 20)
