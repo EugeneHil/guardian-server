@@ -36,8 +36,9 @@ Rejected:
   dependency of this repository: no new build or vcpkg dependency.
 - NSSM redirects stdout/stderr to files and rotates them, so log rotation is
   configured in NSSM, not in the server.
-- NSSM restarts the process on failure and stops it with a console control
-  event, which the server turns into a clean shutdown.
+- NSSM restarts the process on failure. It must be configured to stop the
+  service with a console Ctrl-C (AppStopMethodConsole) so the server's SIGINT
+  handler performs a clean shutdown.
 - The service should run as a dedicated low-privilege account; the install
   steps set the ACLs on the data directory and the TLS private key.
 - If the service model ever needs more (health-based restarts, native event

@@ -6,7 +6,7 @@ Base URL: `https://<host>:8443`. Examples use `<vps-ip>`, `wdn_<64 hex>` and `<p
 
 ## Conventions
 
-- Every response carries `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+- Every response produced by the Api carries `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`. Transport-level errors (400, 413 and 414 produced by the HTTP layer before the request reaches the Api) are JSON error bodies without these two headers.
 - Every error body is JSON: `{"error":"<code>","message":"<text>"}`. Messages are fixed strings; no exception text, path or stack trace is ever returned. `invalid_events` and `invalid_draft` add an `errors` array of `{"path","message"}`.
 - JSON responses use `Content-Type: application/json; charset=utf-8`. Clients must compare the media type tolerantly (do not match the whole header against `application/json`).
 - Request bodies are limited to 1 MiB; larger bodies get `413 payload_too_large`.
@@ -103,7 +103,7 @@ Event format:
 | `decision` | string | required, exactly `"deny"` or `"allow"` |
 | `ruleId` | string | optional |
 
-All strings are at most 4096 bytes. Unknown keys are ignored. The body must be strictly valid UTF-8 and JSON nested no deeper than 64 levels. Control characters in strings are stored verbatim; the panel escapes them.
+All strings are at most 4096 bytes. Unknown keys are ignored. The body must be strictly valid UTF-8 and JSON nested no deeper than 64 levels. Escaped control characters in strings (for example `\u0001`) are stored verbatim (raw control bytes inside a JSON string fail parsing as `invalid JSON`); the panel escapes them.
 
 Validation error shape (`400`), for example when item 2 has no `file`:
 

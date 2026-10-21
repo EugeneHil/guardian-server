@@ -30,7 +30,8 @@ Layout of the data directory (default `data`, on the VPS `C:\warden\data`); the 
 - `agents.json`: agent ids with hashed tokens
 - `policies/vN.json`, `policies/active` (pointer to the active version), `policies/draft.json`
 - `events.jsonl`, rotated to `events.1.jsonl`, ...
-- `tls/`: default output directory of `cert generate` (certificate and private key)
+
+`cert generate` is independent of `dataDir`: by default it writes the certificate and private key to `data/tls` relative to the current working directory (pass `--out-dir` to choose another place).
 
 Policy publishing is crash-safe: `vN.json` is written first, then the `active` pointer flips. A fresh server bootstraps an empty policy as v1, so the first publish is v2.
 

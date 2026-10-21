@@ -59,7 +59,7 @@ class ApiDocTest(unittest.TestCase):
         doc = read("docs", "api.md")
         for name, text in sources().items():
             for code in find_error_codes(text):
-                self.assertIn(code, doc, "%s: error code %s missing from docs/api.md" % (name, code))
+                self.assertIn("`%s`" % code, doc, "%s: error code %s missing from docs/api.md" % (name, code))
 
 
 class ReadmeTest(unittest.TestCase):

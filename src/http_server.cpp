@@ -215,7 +215,7 @@ bool HttpServer::bind() {
       writeResponse(internalError(), res);
     }
   };
-  server->Get(kCatchAll, forward);  // also serves HEAD
+  server->Get(kCatchAll, forward);  // HEAD is routed here by httplib, then rejected by Api with 405
   server->Post(kCatchAll, forward);
   server->Put(kCatchAll, forward);
   server->Patch(kCatchAll, forward);
