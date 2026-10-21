@@ -38,7 +38,7 @@ NowFn fakeNow() {
   return [] { return TimePoint{std::chrono::seconds{1'792'571'400}}; };  // fixed instant
 }
 
-fs::path agentsFile(const TempDir& dir) { return dir.path() / "data" / "agents.json"; }
+fs::path agentsFile(const TempDir& dir) { return dir.path() / "agents.json"; }
 }  // namespace
 
 TEST(AgentStore, AddReturnsTokenThatAuthenticates) {
@@ -147,4 +147,12 @@ TEST(AgentStore, ListIsSortedByIdWithCreatedAt) {
   EXPECT_EQ(agents[1].id, "mid");
   EXPECT_EQ(agents[2].id, "zeta");
   EXPECT_EQ(agents[0].createdAt, formatUtc(fakeNow()()));
+}
+
+TEST(AgentStore, FileLivesDirectlyInDataDir) {
+  const TempDir dir;
+  FileAgentStore store(dir.path(), fakeNow());
+  ASSERT_TRUE(store.add("agent-1").has_value());
+  EXPECT_TRUE(fs::exists(dir.path() / "agents.json"));
+  EXPECT_FALSE(fs::exists(dir.path() / "data"));
 }

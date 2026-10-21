@@ -24,7 +24,7 @@ bool isValidAgentId(std::string_view id) noexcept {
 }
 
 FileAgentStore::FileAgentStore(const std::filesystem::path& dataDir, NowFn now)
-    : file_(dataDir / "data" / "agents.json"), now_(std::move(now)) {}
+    : file_(dataDir / "agents.json"), now_(std::move(now)) {}
 
 std::vector<FileAgentStore::Entry> FileAgentStore::load() const {
   const auto raw = readFile(file_);

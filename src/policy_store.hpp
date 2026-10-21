@@ -28,7 +28,7 @@ class PolicyStore {
   virtual void commit(const PolicyDoc& doc) = 0;
 };
 
-// Layout under <dataDir>/data/policies: v<N>.json, `active` (decimal N + "\n"), draft.json.
+// Layout under <dataDir>/policies: v<N>.json, `active` (decimal N + "\n"), draft.json.
 // commit writes v<N>.json first and then flips the pointer, so a crash in between leaves the
 // previous version active.
 class FilePolicyStore final : public PolicyStore {

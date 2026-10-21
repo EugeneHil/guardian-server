@@ -31,7 +31,7 @@ std::int64_t parsePointer(const std::string& text) {
 }  // namespace
 
 FilePolicyStore::FilePolicyStore(const std::filesystem::path& dataDir)
-    : dir_(dataDir / "data" / "policies") {
+    : dir_(dataDir / "policies") {
   const std::scoped_lock lock(mutex_);
   const auto pointer = readFile(dir_ / "active");
   if (!pointer) {

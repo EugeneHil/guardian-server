@@ -30,7 +30,7 @@ class TempDir {
     fs::remove_all(path_, ec);
   }
   [[nodiscard]] const fs::path& path() const { return path_; }
-  [[nodiscard]] fs::path policies() const { return path_ / "data" / "policies"; }
+  [[nodiscard]] fs::path policies() const { return path_ / "policies"; }
 
  private:
   static inline int counter_ = 0;
@@ -161,4 +161,16 @@ TEST(PolicyStore, ConcurrentCommitsNeverCorrupt) {
   EXPECT_EQ(failed.load(), 7);
   EXPECT_EQ(store.active().version, 2);
   EXPECT_TRUE(warden::parsePolicy(store.active().json).ok());
+}
+
+TEST(PolicyStore, FilesLiveDirectlyInDataDir) {
+  TempDir dir;
+  FilePolicyStore store(dir.path());
+  store.commit({2, policyJson(2)});
+  store.saveDraft("d");
+  EXPECT_TRUE(fs::exists(dir.path() / "policies" / "active"));
+  EXPECT_TRUE(fs::exists(dir.path() / "policies" / "v1.json"));
+  EXPECT_TRUE(fs::exists(dir.path() / "policies" / "v2.json"));
+  EXPECT_TRUE(fs::exists(dir.path() / "policies" / "draft.json"));
+  EXPECT_FALSE(fs::exists(dir.path() / "data"));
 }

@@ -34,7 +34,7 @@ class AgentStore {
   [[nodiscard]] virtual std::optional<std::string> authenticate(std::string_view token) const = 0;
 };
 
-// Agents persisted in <dataDir>/data/agents.json. The file is re-read on every operation, so
+// Agents persisted in <dataDir>/agents.json. The file is re-read on every operation, so
 // changes made by another process or instance (e.g. the CLI) apply immediately.
 class FileAgentStore final : public AgentStore {
  public:
