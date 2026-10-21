@@ -22,6 +22,7 @@ set(WARDEN_SERVER_SOURCES
     src/agent_store.cpp
     src/api.cpp
     src/auth.cpp
+    src/cli.cpp
     src/config.cpp
     src/crypto.cpp
     src/event.cpp
