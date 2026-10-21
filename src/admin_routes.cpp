@@ -127,11 +127,23 @@ HttpResponse getEvents(const ApiDeps& deps, const HttpRequest& request) {
 
 HttpResponse notFound() { return errorResponse(404, "not_found", "No such resource."); }
 
-RouteHandler adminOnly(RouteHandler inner) {
-  return [inner = std::move(inner)](const ApiDeps& deps, const HttpRequest& request) {
+// Browsers attach cached Basic credentials to cross-site form posts. A custom header cannot be
+// set by a cross-site form (and needs a CORS preflight, which the server never grants), so
+// requiring it on state-changing calls closes that CSRF path.
+bool hasRequestMarker(const HttpRequest& request) {
+  const auto header = request.headers.find("x-warden-request");
+  return header != request.headers.end() && header->second == "1";
+}
+
+RouteHandler adminOnly(RouteHandler inner, bool stateChanging = false) {
+  return [inner = std::move(inner), stateChanging](const ApiDeps& deps,
+                                                   const HttpRequest& request) {
     HttpResponse denied;
     if (!authenticateAdmin(deps, request, denied)) {
       return denied;
+    }
+    if (stateChanging && !hasRequestMarker(request)) {
+      return errorResponse(400, "bad_request", "Header X-Warden-Request: 1 is required.");
     }
     return inner(deps, request);
   };
@@ -148,8 +160,8 @@ RouteHandler staticRoute() {
 
 void registerAdminRoutes(RouteTable& table) {
   table.add("GET", "/api/v1/admin/policy", adminOnly(getPolicy));
-  table.add("PUT", "/api/v1/admin/policy/draft", adminOnly(putDraft));
-  table.add("POST", "/api/v1/admin/policy/publish", adminOnly(publish));
+  table.add("PUT", "/api/v1/admin/policy/draft", adminOnly(putDraft, true));
+  table.add("POST", "/api/v1/admin/policy/publish", adminOnly(publish, true));
   table.add("GET", "/api/v1/admin/events", adminOnly(getEvents));
   for (const char* path : {"/", "/app.js", "/panel.css", "/tokens.css"}) {
     table.add("GET", path, staticRoute());

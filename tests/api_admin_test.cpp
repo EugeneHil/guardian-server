@@ -26,6 +26,13 @@ std::string header(const HttpResponse& r, const std::string& name) {
   return it == r.headers.end() ? std::string("<absent>") : it->second;
 }
 
+// Admin request that carries the header every state-changing admin call must send.
+HttpRequest adminWrite(const std::string& method, const std::string& path) {
+  HttpRequest r = ApiFixture::request(method, path, adminAuth());
+  r.headers["x-warden-request"] = "1";
+  return r;
+}
+
 void expectError(const HttpResponse& r, int status, const std::string& code) {
   EXPECT_EQ(r.status, status) << r.body;
   auto j = json::parse(r.body, nullptr, false);
@@ -88,7 +95,7 @@ TEST_F(Admin, GetPolicyShowsActiveAndNullDraft) {
 }
 
 TEST_F(Admin, GetPolicyShowsDraftWithValidation) {
-  auto put = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  auto put = adminWrite("PUT", "/api/v1/admin/policy/draft");
   put.body = kInvalidDraft;
   ASSERT_EQ(api_.handle(put).status, 200);
   auto r = api_.handle(request("GET", "/api/v1/admin/policy", adminAuth()));
@@ -99,7 +106,7 @@ TEST_F(Admin, GetPolicyShowsDraftWithValidation) {
 }
 
 TEST_F(Admin, PutDraftValidReturnsValidTrue) {
-  auto put = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  auto put = adminWrite("PUT", "/api/v1/admin/policy/draft");
   put.body = kValidDraft;
   auto r = api_.handle(put);
   ASSERT_EQ(r.status, 200) << r.body;
@@ -109,7 +116,7 @@ TEST_F(Admin, PutDraftValidReturnsValidTrue) {
 }
 
 TEST_F(Admin, PutDraftInvalidReturnsErrorsWithPathsAndStillSaves) {
-  auto put = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  auto put = adminWrite("PUT", "/api/v1/admin/policy/draft");
   put.body = kInvalidDraft;
   auto r = api_.handle(put);
   ASSERT_EQ(r.status, 200) << r.body;
@@ -122,17 +129,17 @@ TEST_F(Admin, PutDraftInvalidReturnsErrorsWithPathsAndStillSaves) {
 }
 
 TEST_F(Admin, PutDraftOversizeIs413) {
-  auto put = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  auto put = adminWrite("PUT", "/api/v1/admin/policy/draft");
   put.body.assign(kMaxBodyBytes + 1, 'x');
   expectError(api_.handle(put), 413, "payload_too_large");
   EXPECT_FALSE(policyStore_.draft().has_value());
 }
 
 TEST_F(Admin, PublishValidDraftReturnsNextVersionAndAgentSeesIt) {
-  auto put = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  auto put = adminWrite("PUT", "/api/v1/admin/policy/draft");
   put.body = kValidDraft;
   ASSERT_EQ(api_.handle(put).status, 200);
-  auto r = api_.handle(request("POST", "/api/v1/admin/policy/publish", adminAuth()));
+  auto r = api_.handle(adminWrite("POST", "/api/v1/admin/policy/publish"));
   ASSERT_EQ(r.status, 200) << r.body;
   EXPECT_EQ(json::parse(r.body), json({{"version", 2}}));
   const std::string token = addAgent("mac-1");
@@ -145,10 +152,10 @@ TEST_F(Admin, PublishValidDraftReturnsNextVersionAndAgentSeesIt) {
 }
 
 TEST_F(Admin, PublishInvalidIs422WithErrors) {
-  auto put = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  auto put = adminWrite("PUT", "/api/v1/admin/policy/draft");
   put.body = kInvalidDraft;
   ASSERT_EQ(api_.handle(put).status, 200);
-  auto r = api_.handle(request("POST", "/api/v1/admin/policy/publish", adminAuth()));
+  auto r = api_.handle(adminWrite("POST", "/api/v1/admin/policy/publish"));
   expectError(r, 422, "invalid_draft");
   auto j = json::parse(r.body);
   ASSERT_FALSE(j["errors"].empty());
@@ -156,7 +163,7 @@ TEST_F(Admin, PublishInvalidIs422WithErrors) {
 }
 
 TEST_F(Admin, PublishWithoutDraftIs409) {
-  expectError(api_.handle(request("POST", "/api/v1/admin/policy/publish", adminAuth())), 409,
+  expectError(api_.handle(adminWrite("POST", "/api/v1/admin/policy/publish")), 409,
               "no_draft");
 }
 
@@ -287,4 +294,25 @@ TEST_F(Admin, LockoutIsPerRealm) {
   EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", token, "10.0.0.2")).status, 429);
   EXPECT_EQ(
       api_.handle(request("GET", "/api/v1/admin/policy", adminAuth(), "10.0.0.2")).status, 200);
+}
+
+TEST_F(Admin, StateChangingCallsRequireTheCustomHeader) {
+  for (const auto* spec : {&kAdminRoutes[1], &kAdminRoutes[2]}) {
+    auto missing = request(spec->method, spec->path, adminAuth());
+    expectError(api_.handle(missing), 400, "bad_request");
+    auto wrong = request(spec->method, spec->path, adminAuth());
+    wrong.headers["x-warden-request"] = "0";
+    expectError(api_.handle(wrong), 400, "bad_request");
+    // Authentication still comes first: no credentials means 401, not a hint about the header.
+    EXPECT_EQ(api_.handle(request(spec->method, spec->path)).status, 401);
+  }
+  // Nothing was saved or published by the refused calls.
+  auto get = api_.handle(request("GET", "/api/v1/admin/policy", adminAuth()));
+  EXPECT_TRUE(json::parse(get.body)["draft"].is_null());
+  EXPECT_EQ(json::parse(get.body)["active"]["version"], 1);
+}
+
+TEST_F(Admin, ReadOnlyAdminCallsNeedNoCustomHeader) {
+  EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/policy", adminAuth())).status, 200);
+  EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/events", adminAuth())).status, 200);
 }

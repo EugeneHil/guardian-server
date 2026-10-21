@@ -130,10 +130,12 @@ Returns `{"active":{"version":N,"policy":{...}},"draft":null}`, or with a draft 
 
 ### PUT /api/v1/admin/policy/draft
 
+State-changing admin calls (this one and `POST .../publish`) must carry the request header `X-Warden-Request: 1`, otherwise they fail with `400 bad_request` after authentication. A cross-site form post cannot set a custom header, so this stops CSRF through the browser's cached Basic credentials. The panel sends it automatically.
+
 Body is the raw policy text. It is saved even when invalid; the response reports validation (via `warden::parsePolicy`): `200 {"valid":true,"errors":[]}`.
 
 ```sh
-curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X PUT \
+curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X PUT -H 'X-Warden-Request: 1' \
   --data-binary @policy.json https://<vps-ip>:8443/api/v1/admin/policy/draft
 ```
 
@@ -142,7 +144,7 @@ Drafts carry `"version": 0` by convention; an omitted `version` is accepted and 
 ### POST /api/v1/admin/policy/publish
 
 ```sh
-curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X POST \
+curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X POST -H 'X-Warden-Request: 1' \
   https://<vps-ip>:8443/api/v1/admin/policy/publish
 # 200 {"version":4}
 ```
@@ -174,7 +176,7 @@ Returns `{"events":[{"ts","process":{"path","signingId","teamId"},"responsible":
 | 200 | | all routes | success |
 | 304 | | `GET /api/v1/policy` | active version matches `If-None-Match`; no body |
 | 400 | `invalid_events` | `POST /api/v1/events` | any item or the body is invalid; `errors` lists them |
-| 400 | `bad_request` | `GET /api/v1/admin/events`; malformed requests rejected by the HTTP layer | bad `limit`, bad request line or unknown method |
+| 400 | `bad_request` | `GET /api/v1/admin/events`; `PUT .../draft` and `POST .../publish` without `X-Warden-Request: 1`; malformed requests rejected by the HTTP layer | bad `limit`, bad request line or unknown method |
 | 401 | `unauthorized` | agent and admin routes | missing, malformed, wrong or revoked credentials; `WWW-Authenticate: Bearer` (agent) or `Basic realm="Warden", charset="UTF-8"` (admin) |
 | 404 | `not_found` | any unknown path, a missing static file | no such resource |
 | 405 | `method_not_allowed` | known path, wrong method (including HEAD, OPTIONS, PATCH, DELETE) | `Allow` header lists the supported methods |
