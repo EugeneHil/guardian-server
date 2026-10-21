@@ -28,6 +28,7 @@ set(WARDEN_SERVER_SOURCES
     src/file_event_store.cpp
     src/file_policy_store.cpp
     src/fs_util.cpp
+    src/http_server.cpp
     src/policy_service.cpp
     src/static_files.cpp
     src/timeutil.cpp
