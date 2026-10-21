@@ -279,6 +279,26 @@ TEST_F(CliTest, ServeWithInvalidConfigPrintsAllErrorsAndExits1) {
   EXPECT_NE(r.err.find("tls"), std::string::npos);
 }
 
+TEST_F(CliTest, ServeNotesAnExplicitConfigPathThatDoesNotExist) {
+  const auto missing = (root_ / "missing.json").string();
+  const auto r = run({"serve", "--config", missing},
+                     {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
+  EXPECT_NE(r.err.find("note: config file " + missing + " not found, using environment only\n"),
+            std::string::npos);
+  EXPECT_TRUE(r.out.empty());
+}
+
+TEST_F(CliTest, ServeStaysSilentWhenTheDefaultConfigIsMissing) {
+  // Run from an empty directory so the default relative path cannot exist.
+  const auto previous = fs::current_path();
+  fs::current_path(root_);
+  const auto r =
+      run({"serve"}, {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
+  fs::current_path(previous);
+  EXPECT_EQ(r.err.find("not found"), std::string::npos);
+  EXPECT_EQ(r.code, 1);
+}
+
 TEST_F(CliTest, ServeErrorsNeverEchoThePassword) {
   const std::string secret = "weakpw-marker-xyz";
   const auto r = run({"serve", "--config", (root_ / "missing.json").string()},
@@ -356,7 +376,7 @@ TEST_F(CliTest, ServeStartsAndStopsOnLoopbackPlainHttp) {
   const int code = runCli({"serve", "--config", cfg.string()}, out, err, lookup, now, hooks);
   EXPECT_EQ(code, 0) << err.str();
   EXPECT_TRUE(hookCalled);
-  EXPECT_NE(err.str().find("listening on 127.0.0.1:18443 (plain http)"), std::string::npos);
+  EXPECT_NE(err.str().find("starting on 127.0.0.1:18443 (plain http)"), std::string::npos);
   EXPECT_EQ(err.str().find(kTestPassword), std::string::npos);
   EXPECT_TRUE(out.str().empty());
 }

@@ -45,6 +45,14 @@
       "toolchainFile": "$env{VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake"
     },
     {
+      "name": "windows-release",
+      "description": "Release build of the windows preset, used by CI and the deploy workflow",
+      "inherits": "windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "linux",
       "description": "Unofficial platform",
       "inherits": "base",
@@ -85,6 +93,10 @@
       "configurePreset": "windows"
     },
     {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    },
+    {
       "name": "linux",
       "configurePreset": "linux"
     },
@@ -104,6 +116,13 @@
     {
       "name": "windows",
       "configurePreset": "windows",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
       "output": {
         "outputOnFailure": true
       }

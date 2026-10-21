@@ -121,7 +121,10 @@ void writeResponse(const HttpResponse& in, httplib::Response& out) {
       out.set_header(header.first, header.second);
     }
   }
-  out.set_content(in.body, contentType);
+  // Bodiless answers (304) carry no Content-Type either.
+  if (!in.body.empty()) {
+    out.set_content(in.body, contentType);
+  }
 }
 
 HttpResponse internalError() { return errorResponse(500, "internal", "Internal server error."); }
@@ -215,7 +218,7 @@ bool HttpServer::bind() {
       writeResponse(internalError(), res);
     }
   };
-  server->Get(kCatchAll, forward);  // also serves HEAD
+  server->Get(kCatchAll, forward);  // HEAD is routed here by httplib, then rejected by Api with 405
   server->Post(kCatchAll, forward);
   server->Put(kCatchAll, forward);
   server->Patch(kCatchAll, forward);

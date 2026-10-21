@@ -60,6 +60,21 @@ class RouteTable {
 HttpResponse errorResponse(int status, const std::string& code, const std::string& message);
 HttpResponse jsonResponse(int status, const nlohmann::json& body);
 
+// Checks the credentials of one realm; returns the authenticated principal or nullopt.
+using CredentialCheck = std::function<std::optional<std::string>(const HttpRequest&)>;
+
+// Shared authentication gate with the throttle contract. The throttle is keyed by realm and
+// remote address, so a success in one realm never resets failures counted in another.
+//  - a locked-out key is refused with 429 + Retry-After before credentials are looked at and is
+//    NOT charged again;
+//  - missing, malformed or wrong credentials count as one failure and yield a 401 carrying
+//    `challenge` as WWW-Authenticate;
+//  - a success resets the failure count of that realm and address.
+// Returns the principal, or nullopt with `denied` set to the response to send.
+std::optional<std::string> authenticateWith(const ApiDeps& deps, const HttpRequest& request,
+                                            const std::string& realm, const CredentialCheck& check,
+                                            const std::string& challenge, HttpResponse& denied);
+
 // Registered by Api's constructor.
 void registerAgentRoutes(RouteTable& table);
 void registerAdminRoutes(RouteTable& table);

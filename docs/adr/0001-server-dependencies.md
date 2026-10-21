@@ -28,7 +28,9 @@ more dependencies than it needs.
   GoogleTest's shared CRT (`gtest_force_shared_crt`). The VPS therefore needs
   the VC++ redistributable. On macOS OpenSSL comes from Homebrew `openssl@3`.
 - warden-core is a git submodule at `external/warden-core`, pinned to a release
-  tag.
+  tag. warden-core's `include(Dependencies)` and `include(Warnings)` resolve to
+  this repository's cmake modules because `CMAKE_MODULE_PATH` shadows its own,
+  which is why those modules use `include_guard(GLOBAL)`.
 
 ## Consequences
 

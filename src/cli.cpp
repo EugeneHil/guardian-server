@@ -322,7 +322,8 @@ int runServe(const std::vector<std::string>& args, std::ostream& err, const EnvL
   if (!parsed.positionals.empty()) {
     return usageError(err, "serve takes no positional arguments");
   }
-  const fs::path configPath = flag(parsed, "--config").value_or(kDefaultConfigFile);
+  const auto explicitConfig = flag(parsed, "--config");
+  const fs::path configPath = explicitConfig.value_or(kDefaultConfigFile);
   std::string fileJson;
   std::error_code ec;
   if (fs::exists(configPath, ec)) {
@@ -332,6 +333,9 @@ int runServe(const std::vector<std::string>& args, std::ostream& err, const EnvL
       return kExitError;
     }
     fileJson = *text;
+  } else if (explicitConfig) {
+    // Environment-only setups stay valid, but a mistyped --config must not go unnoticed.
+    err << "note: config file " << configPath.string() << " not found, using environment only\n";
   }
   const ConfigResult loaded = loadConfig(fileJson, env);
   if (!loaded.config) {
@@ -361,7 +365,7 @@ int runServe(const std::vector<std::string>& args, std::ostream& err, const EnvL
     // Declared after `server`, so it disarms before the server is destroyed.
     const StopDisarmer disarm(stopState);
 
-    err << "listening on " << config.host << ":" << config.port << " ("
+    err << "starting on " << config.host << ":" << config.port << " ("
         << (config.tls ? "tls" : "plain http") << ")\n";
     if (hooks.onReady) {
       hooks.onReady([stopState] {

@@ -1,7 +1,5 @@
 // Admin routes (policy editing, event listing) and the static panel files. Every route here
 // requires HTTP Basic credentials.
-#include <algorithm>
-#include <chrono>
 #include <cstddef>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -21,38 +19,24 @@ constexpr std::size_t kDefaultEventLimit = 100;
 constexpr std::size_t kMaxEventLimit = 1000;
 constexpr std::size_t kMaxLimitDigits = 8;
 
-HttpResponse unauthorized() {
-  HttpResponse response = errorResponse(401, "unauthorized", "Missing or invalid credentials.");
-  response.headers["WWW-Authenticate"] = R"(Basic realm="Warden", charset="UTF-8")";
-  return response;
-}
-
-// Throttle contract: a locked-out address is refused first and is not charged again; missing,
-// malformed or wrong credentials count as one failure; success resets the count. Returns true
-// when authenticated, otherwise `denied` holds the response to send.
+// Checks the Basic credentials through the shared throttle gate. Returns true when
+// authenticated, otherwise `denied` holds the response to send.
 bool authenticateAdmin(const ApiDeps& deps, const HttpRequest& request, HttpResponse& denied) {
-  AuthThrottle& throttle = deps.throttle;
-  if (throttle.blocked(request.remoteAddr)) {
-    const auto seconds =
-        std::max<std::chrono::seconds::rep>(1, throttle.retryAfter(request.remoteAddr).count());
-    denied = errorResponse(429, "too_many_requests", "Too many failed attempts. Try again later.");
-    denied.headers["Retry-After"] = std::to_string(seconds);
-    return false;
-  }
-  bool ok = false;
-  const auto header = request.headers.find("authorization");
-  if (header != request.headers.end()) {
-    if (const auto credentials = parseBasic(header->second)) {
-      ok = adminCredentialsMatch(*credentials, deps.adminPassword);
-    }
-  }
-  if (!ok) {
-    throttle.recordFailure(request.remoteAddr);
-    denied = unauthorized();
-    return false;
-  }
-  throttle.recordSuccess(request.remoteAddr);
-  return true;
+  return authenticateWith(
+             deps, request, "admin",
+             [&deps](const HttpRequest& req) -> std::optional<std::string> {
+               const auto header = req.headers.find("authorization");
+               if (header == req.headers.end()) {
+                 return std::nullopt;
+               }
+               const auto credentials = parseBasic(header->second);
+               if (credentials && adminCredentialsMatch(*credentials, deps.adminPassword)) {
+                 return std::string("admin");
+               }
+               return std::nullopt;
+             },
+             R"(Basic realm="Warden", charset="UTF-8")", denied)
+      .has_value();
 }
 
 nlohmann::json errorsToJson(const std::vector<warden::ValidationError>& errors) {
@@ -143,14 +127,26 @@ HttpResponse getEvents(const ApiDeps& deps, const HttpRequest& request) {
 
 HttpResponse notFound() { return errorResponse(404, "not_found", "No such resource."); }
 
-RouteHandler adminOnly(RouteHandler inner) {
-  return [inner = std::move(inner)](const ApiDeps& deps, const HttpRequest& request) {
-    HttpResponse denied;
-    if (!authenticateAdmin(deps, request, denied)) {
-      return denied;
-    }
-    return inner(deps, request);
-  };
+// Browsers attach cached Basic credentials to cross-site form posts. A custom header cannot be
+// set by a cross-site form (and needs a CORS preflight, which the server never grants), so
+// requiring it on state-changing calls closes that CSRF path.
+bool hasRequestMarker(const HttpRequest& request) {
+  const auto header = request.headers.find("x-warden-request");
+  return header != request.headers.end() && header->second == "1";
+}
+
+RouteHandler adminOnly(RouteHandler inner, bool stateChanging = false) {
+  return
+      [inner = std::move(inner), stateChanging](const ApiDeps& deps, const HttpRequest& request) {
+        HttpResponse denied;
+        if (!authenticateAdmin(deps, request, denied)) {
+          return denied;
+        }
+        if (stateChanging && !hasRequestMarker(request)) {
+          return errorResponse(400, "bad_request", "Header X-Warden-Request: 1 is required.");
+        }
+        return inner(deps, request);
+      };
 }
 
 RouteHandler staticRoute() {
@@ -164,8 +160,8 @@ RouteHandler staticRoute() {
 
 void registerAdminRoutes(RouteTable& table) {
   table.add("GET", "/api/v1/admin/policy", adminOnly(getPolicy));
-  table.add("PUT", "/api/v1/admin/policy/draft", adminOnly(putDraft));
-  table.add("POST", "/api/v1/admin/policy/publish", adminOnly(publish));
+  table.add("PUT", "/api/v1/admin/policy/draft", adminOnly(putDraft, true));
+  table.add("POST", "/api/v1/admin/policy/publish", adminOnly(publish, true));
   table.add("GET", "/api/v1/admin/events", adminOnly(getEvents));
   for (const char* path : {"/", "/app.js", "/panel.css", "/tokens.css"}) {
     table.add("GET", path, staticRoute());

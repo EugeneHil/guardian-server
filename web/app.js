@@ -46,6 +46,10 @@
   // Resolves to {status, body} or rejects with an Error whose message is user-presentable.
   function api(method, path, body) {
     var init = { method: method, credentials: "same-origin", cache: "no-store", headers: {} };
+    if (method !== "GET") {
+      // Required by the server on state-changing calls; a cross-site form cannot send it.
+      init.headers["X-Warden-Request"] = "1";
+    }
     if (body !== undefined) {
       init.body = body;
       init.headers["Content-Type"] = "application/json";

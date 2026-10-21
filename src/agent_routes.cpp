@@ -1,6 +1,4 @@
 // Agent-facing routes: health, policy download and event ingestion.
-#include <algorithm>
-#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -45,41 +43,20 @@ bool etagMatches(std::string_view header, std::string_view etag) {
   }
 }
 
-HttpResponse unauthorized() {
-  HttpResponse response = errorResponse(401, "unauthorized", "Missing or invalid credentials.");
-  response.headers["WWW-Authenticate"] = "Bearer";
-  return response;
-}
-
-// Applies the throttle contract and resolves the agent id from the bearer token. Returns the
-// agent id, or nullopt with `denied` set to the response to send.
-//  - a locked-out address is refused before credentials are looked at and is NOT charged again;
-//  - missing, malformed or unknown credentials count as one failure;
-//  - a valid token resets the failure count.
+// Resolves the agent id from the bearer token through the shared throttle gate.
 std::optional<std::string> authenticateAgent(const ApiDeps& deps, const HttpRequest& request,
                                              HttpResponse& denied) {
-  AuthThrottle& throttle = deps.throttle;
-  if (throttle.blocked(request.remoteAddr)) {
-    const auto seconds =
-        std::max<std::chrono::seconds::rep>(1, throttle.retryAfter(request.remoteAddr).count());
-    denied = errorResponse(429, "too_many_requests", "Too many failed attempts. Try again later.");
-    denied.headers["Retry-After"] = std::to_string(seconds);
-    return std::nullopt;
-  }
-  std::optional<std::string> agentId;
-  const auto header = request.headers.find("authorization");
-  if (header != request.headers.end()) {
-    if (const auto token = parseBearer(header->second)) {
-      agentId = deps.agents.authenticate(*token);
-    }
-  }
-  if (!agentId) {
-    throttle.recordFailure(request.remoteAddr);
-    denied = unauthorized();
-    return std::nullopt;
-  }
-  throttle.recordSuccess(request.remoteAddr);
-  return agentId;
+  return authenticateWith(
+      deps, request, "agent",
+      [&deps](const HttpRequest& req) -> std::optional<std::string> {
+        const auto header = req.headers.find("authorization");
+        if (header == req.headers.end()) {
+          return std::nullopt;
+        }
+        const auto token = parseBearer(header->second);
+        return token ? deps.agents.authenticate(*token) : std::nullopt;
+      },
+      "Bearer", denied);
 }
 
 HttpResponse health(const ApiDeps& /*deps*/, const HttpRequest& /*request*/) {
