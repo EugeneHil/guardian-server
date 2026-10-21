@@ -1,7 +1,9 @@
 #include "policy_service.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <nlohmann/json.hpp>
+#include <utility>
 
 #include "fs_util.hpp"
 
@@ -11,14 +13,21 @@ namespace {
 constexpr std::size_t kMaxPolicyBytes = 1048576;  // 1 MiB
 
 // The published version is always assigned by the server, so a draft that omits "version"
-// is acceptable; every other error is reported as is.
+// is acceptable; every other error is reported as is. Parser messages for malformed JSON carry
+// nlohmann text (byte offsets, token text), so they are replaced by a fixed message.
 std::vector<warden::ValidationError> validate(std::string_view text) {
   std::vector<warden::ValidationError> errors = warden::parsePolicy(text).errors;
+  // Coupled to warden-core's literal {"version", "missing"} error.
   errors.erase(std::remove_if(errors.begin(), errors.end(),
                               [](const warden::ValidationError& e) {
                                 return e.path == "version" && e.message == "missing";
                               }),
                errors.end());
+  for (warden::ValidationError& error : errors) {
+    if (error.path == "$" && error.message.rfind("invalid JSON", 0) == 0) {
+      error.message = "invalid JSON";
+    }
+  }
   return errors;
 }
 

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -189,4 +190,45 @@ TEST(PolicyService, DuplicateJsonKeysInDraftAreRejected) {
   const PublishResult result = f.service.publish();
   EXPECT_EQ(result.failure, PublishResult::Failure::Invalid);
   EXPECT_EQ(f.service.active().version, 1);
+}
+
+TEST(PolicyService, MalformedJsonReportsFixedMessageWithoutParserText) {
+  Fixture f;
+  const std::vector<std::string> inputs = {"{\"rules\": [", "\x01\x02\xff garbage", ""};
+  for (const std::string& input : inputs) {
+    const ValidationReport saved = f.service.saveDraft(input);
+    EXPECT_FALSE(saved.valid);
+    ASSERT_EQ(saved.errors.size(), 1U);
+    EXPECT_EQ(saved.errors[0].path, "$");
+    EXPECT_EQ(saved.errors[0].message, "invalid JSON");
+    const ValidationReport validated = f.service.validateDraft();
+    ASSERT_EQ(validated.errors.size(), 1U);
+    EXPECT_EQ(validated.errors[0].message, "invalid JSON");
+    const PublishResult published = f.service.publish();
+    EXPECT_EQ(published.failure, PublishResult::Failure::Invalid);
+    ASSERT_EQ(published.errors.size(), 1U);
+    EXPECT_EQ(published.errors[0].path, "$");
+    EXPECT_EQ(published.errors[0].message, "invalid JSON");
+  }
+}
+
+TEST(PolicyService, NonObjectRootIsRejected) {
+  Fixture f;
+  EXPECT_FALSE(f.service.saveDraft("[]").valid);
+  EXPECT_EQ(f.service.publish().failure, PublishResult::Failure::Invalid);
+  EXPECT_EQ(f.service.active().version, 1);
+}
+
+TEST(PolicyService, MissingVersionAndRulesReportsOnlyRules) {
+  Fixture f;
+  const ValidationReport report = f.service.saveDraft(R"({"schemaVersion":1})");
+  EXPECT_FALSE(report.valid);
+  EXPECT_EQ(described(report), std::vector<std::string>{"rules: missing"});
+}
+
+TEST(PolicyService, BadVersionValuesStayInvalid) {
+  Fixture f;
+  EXPECT_FALSE(f.service.saveDraft(draftJson(R"("version":"x",)")).valid);
+  EXPECT_FALSE(f.service.saveDraft(draftJson(R"("version":-1,)")).valid);
+  EXPECT_EQ(f.service.publish().failure, PublishResult::Failure::Invalid);
 }
