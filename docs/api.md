@@ -20,7 +20,7 @@ Procedure:
 
 1. On the VPS: `warden-server cert generate --host <vps-ip>` writes the certificate and key (default directory `data/tls`) and prints `SPKI pin: <pin>`. It refuses to overwrite existing files.
 2. Later, recompute the pin from the certificate alone with `warden-server cert pin <certFile>` (prints only the pin).
-3. Give `<pin>` to the agent configuration. The agent must refuse the connection when the presented key hashes to anything else, and a certificate renewal that keeps the same key keeps the pin valid.
+3. Give `<pin>` to the agent configuration. The agent must refuse the connection when the presented key hashes to anything else. A renewed certificate has a new key (`cert generate` always creates one), so renewal changes the pin and every agent must be given the new value.
 4. Check by hand: `curl --pinnedpubkey 'sha256//<pin>' -k https://<vps-ip>:8443/healthz` (`-k` only disables CA validation; the pin check still applies).
 
 ## Authentication
@@ -40,7 +40,7 @@ Procedure:
 
 - 5 consecutive failed authentications from one remote address lock that address out for 60 seconds. Every request from a locked-out address gets `429 too_many_requests` with `Retry-After: <seconds>`, even with valid credentials, and is not charged again.
 - A successful authentication resets the failure count.
-- One throttle is shared by the agent and the admin routes per remote address (clients behind one NAT share it).
+- The throttle is kept per realm (agent or admin) and remote address, so clients behind one NAT share it within a realm. A successful login only resets the failures of its own realm: a valid agent token does not clear failed admin attempts.
 - Missing, malformed, unknown or wrong credentials each count as one failure. Unknown paths and wrong methods (`404`/`405`) are answered before authentication and do not count.
 
 ## Agent endpoints
@@ -118,7 +118,7 @@ Delivery semantics are at-least-once. A valid batch is appended event by event; 
 
 ## Admin endpoints
 
-All of these require Basic credentials and share the throttle. Examples assume `-u admin` (curl prompts for the password; do not put it on a shared command line).
+All of these require Basic credentials and use the admin throttle. Examples assume `-u admin` (curl prompts for the password; do not put it on a shared command line).
 
 ### GET /api/v1/admin/policy
 

@@ -1,7 +1,5 @@
 // Admin routes (policy editing, event listing) and the static panel files. Every route here
 // requires HTTP Basic credentials.
-#include <algorithm>
-#include <chrono>
 #include <cstddef>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -21,38 +19,24 @@ constexpr std::size_t kDefaultEventLimit = 100;
 constexpr std::size_t kMaxEventLimit = 1000;
 constexpr std::size_t kMaxLimitDigits = 8;
 
-HttpResponse unauthorized() {
-  HttpResponse response = errorResponse(401, "unauthorized", "Missing or invalid credentials.");
-  response.headers["WWW-Authenticate"] = R"(Basic realm="Warden", charset="UTF-8")";
-  return response;
-}
-
-// Throttle contract: a locked-out address is refused first and is not charged again; missing,
-// malformed or wrong credentials count as one failure; success resets the count. Returns true
-// when authenticated, otherwise `denied` holds the response to send.
+// Checks the Basic credentials through the shared throttle gate. Returns true when
+// authenticated, otherwise `denied` holds the response to send.
 bool authenticateAdmin(const ApiDeps& deps, const HttpRequest& request, HttpResponse& denied) {
-  AuthThrottle& throttle = deps.throttle;
-  if (throttle.blocked(request.remoteAddr)) {
-    const auto seconds =
-        std::max<std::chrono::seconds::rep>(1, throttle.retryAfter(request.remoteAddr).count());
-    denied = errorResponse(429, "too_many_requests", "Too many failed attempts. Try again later.");
-    denied.headers["Retry-After"] = std::to_string(seconds);
-    return false;
-  }
-  bool ok = false;
-  const auto header = request.headers.find("authorization");
-  if (header != request.headers.end()) {
-    if (const auto credentials = parseBasic(header->second)) {
-      ok = adminCredentialsMatch(*credentials, deps.adminPassword);
-    }
-  }
-  if (!ok) {
-    throttle.recordFailure(request.remoteAddr);
-    denied = unauthorized();
-    return false;
-  }
-  throttle.recordSuccess(request.remoteAddr);
-  return true;
+  return authenticateWith(
+             deps, request, "admin",
+             [&deps](const HttpRequest& req) -> std::optional<std::string> {
+               const auto header = req.headers.find("authorization");
+               if (header == req.headers.end()) {
+                 return std::nullopt;
+               }
+               const auto credentials = parseBasic(header->second);
+               if (credentials && adminCredentialsMatch(*credentials, deps.adminPassword)) {
+                 return std::string("admin");
+               }
+               return std::nullopt;
+             },
+             R"(Basic realm="Warden", charset="UTF-8")", denied)
+      .has_value();
 }
 
 nlohmann::json errorsToJson(const std::vector<warden::ValidationError>& errors) {

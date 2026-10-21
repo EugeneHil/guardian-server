@@ -252,3 +252,39 @@ TEST_F(Admin, EventsStorageFailureIs500WithoutDetails) {
   EXPECT_EQ(r.status, 500);
   EXPECT_EQ(r.body.find("/secret"), std::string::npos);
 }
+
+TEST_F(Admin, AgentSuccessDoesNotResetAdminFailures) {
+  const auto token = addAgent("mac-1");
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/policy", basic("admin:bad"))).status, 401);
+  }
+  EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", token)).status, 200);
+  EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/policy", basic("admin:bad"))).status, 401);
+  expectError(api_.handle(request("GET", "/api/v1/admin/policy", basic("admin:bad"))), 429,
+              "too_many_requests");
+}
+
+TEST_F(Admin, AdminSuccessDoesNotResetAgentFailures) {
+  const auto token = addAgent("mac-1");
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", "bad")).status, 401);
+  }
+  EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/policy", adminAuth())).status, 200);
+  EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", "bad")).status, 401);
+  expectError(api_.handle(bearer("GET", "/api/v1/policy", token)), 429, "too_many_requests");
+}
+
+TEST_F(Admin, LockoutIsPerRealm) {
+  const auto token = addAgent("mac-1");
+  for (int i = 0; i < 6; ++i) {
+    (void)api_.handle(request("GET", "/api/v1/admin/policy", basic("admin:bad")));
+  }
+  EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/policy", adminAuth())).status, 429);
+  EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", token)).status, 200);
+  for (int i = 0; i < 6; ++i) {
+    (void)api_.handle(bearer("GET", "/api/v1/policy", "bad", "10.0.0.2"));
+  }
+  EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", token, "10.0.0.2")).status, 429);
+  EXPECT_EQ(
+      api_.handle(request("GET", "/api/v1/admin/policy", adminAuth(), "10.0.0.2")).status, 200);
+}

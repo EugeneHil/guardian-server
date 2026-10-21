@@ -1,5 +1,7 @@
 #include "api.hpp"
 
+#include <algorithm>
+#include <chrono>
 #include <exception>
 #include <utility>
 
@@ -89,6 +91,29 @@ HttpResponse jsonResponse(int status, const nlohmann::json& body) {
 
 HttpResponse errorResponse(int status, const std::string& code, const std::string& message) {
   return jsonResponse(status, nlohmann::json{{"error", code}, {"message", message}});
+}
+
+std::optional<std::string> authenticateWith(const ApiDeps& deps, const HttpRequest& request,
+                                            const std::string& realm,
+                                            const CredentialCheck& check,
+                                            const std::string& challenge, HttpResponse& denied) {
+  AuthThrottle& throttle = deps.throttle;
+  const std::string key = realm + "|" + request.remoteAddr;
+  if (throttle.blocked(key)) {
+    const auto seconds = std::max<std::chrono::seconds::rep>(1, throttle.retryAfter(key).count());
+    denied = errorResponse(429, "too_many_requests", "Too many failed attempts. Try again later.");
+    denied.headers["Retry-After"] = std::to_string(seconds);
+    return std::nullopt;
+  }
+  auto principal = check(request);
+  if (!principal) {
+    throttle.recordFailure(key);
+    denied = errorResponse(401, "unauthorized", "Missing or invalid credentials.");
+    denied.headers["WWW-Authenticate"] = challenge;
+    return std::nullopt;
+  }
+  throttle.recordSuccess(key);
+  return principal;
 }
 
 Api::Api(ApiDeps deps) : deps_(std::move(deps)) {
