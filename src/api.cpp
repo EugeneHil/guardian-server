@@ -94,8 +94,7 @@ HttpResponse errorResponse(int status, const std::string& code, const std::strin
 }
 
 std::optional<std::string> authenticateWith(const ApiDeps& deps, const HttpRequest& request,
-                                            const std::string& realm,
-                                            const CredentialCheck& check,
+                                            const std::string& realm, const CredentialCheck& check,
                                             const std::string& challenge, HttpResponse& denied) {
   AuthThrottle& throttle = deps.throttle;
   const std::string key = realm + "|" + request.remoteAddr;

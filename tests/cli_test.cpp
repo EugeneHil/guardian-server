@@ -292,7 +292,8 @@ TEST_F(CliTest, ServeStaysSilentWhenTheDefaultConfigIsMissing) {
   // Run from an empty directory so the default relative path cannot exist.
   const auto previous = fs::current_path();
   fs::current_path(root_);
-  const auto r = run({"serve"}, {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
+  const auto r =
+      run({"serve"}, {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
   fs::current_path(previous);
   EXPECT_EQ(r.err.find("not found"), std::string::npos);
   EXPECT_EQ(r.code, 1);

@@ -163,8 +163,7 @@ TEST_F(Admin, PublishInvalidIs422WithErrors) {
 }
 
 TEST_F(Admin, PublishWithoutDraftIs409) {
-  expectError(api_.handle(adminWrite("POST", "/api/v1/admin/policy/publish")), 409,
-              "no_draft");
+  expectError(api_.handle(adminWrite("POST", "/api/v1/admin/policy/publish")), 409, "no_draft");
 }
 
 TEST_F(Admin, EventsNewestFirstAndLimit) {
@@ -292,8 +291,8 @@ TEST_F(Admin, LockoutIsPerRealm) {
     (void)api_.handle(bearer("GET", "/api/v1/policy", "bad", "10.0.0.2"));
   }
   EXPECT_EQ(api_.handle(bearer("GET", "/api/v1/policy", token, "10.0.0.2")).status, 429);
-  EXPECT_EQ(
-      api_.handle(request("GET", "/api/v1/admin/policy", adminAuth(), "10.0.0.2")).status, 200);
+  EXPECT_EQ(api_.handle(request("GET", "/api/v1/admin/policy", adminAuth(), "10.0.0.2")).status,
+            200);
 }
 
 TEST_F(Admin, StateChangingCallsRequireTheCustomHeader) {

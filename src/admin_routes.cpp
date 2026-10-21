@@ -136,17 +136,17 @@ bool hasRequestMarker(const HttpRequest& request) {
 }
 
 RouteHandler adminOnly(RouteHandler inner, bool stateChanging = false) {
-  return [inner = std::move(inner), stateChanging](const ApiDeps& deps,
-                                                   const HttpRequest& request) {
-    HttpResponse denied;
-    if (!authenticateAdmin(deps, request, denied)) {
-      return denied;
-    }
-    if (stateChanging && !hasRequestMarker(request)) {
-      return errorResponse(400, "bad_request", "Header X-Warden-Request: 1 is required.");
-    }
-    return inner(deps, request);
-  };
+  return
+      [inner = std::move(inner), stateChanging](const ApiDeps& deps, const HttpRequest& request) {
+        HttpResponse denied;
+        if (!authenticateAdmin(deps, request, denied)) {
+          return denied;
+        }
+        if (stateChanging && !hasRequestMarker(request)) {
+          return errorResponse(400, "bad_request", "Header X-Warden-Request: 1 is required.");
+        }
+        return inner(deps, request);
+      };
 }
 
 RouteHandler staticRoute() {

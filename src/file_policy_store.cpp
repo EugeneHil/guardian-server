@@ -1,7 +1,6 @@
 #include <cctype>
 #include <string>
 #include <system_error>
-
 #include <warden/policy_parser.hpp>
 
 #include "fs_util.hpp"
