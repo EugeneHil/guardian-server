@@ -14,7 +14,7 @@ cmake --build --preset macos
 ctest --preset macos
 scripts/lint.sh                 # clang-format + clang-tidy, warnings are errors
 scripts/coverage.sh             # line-coverage gate, MIN_COVERAGE defaults to 80
-python3 -I -B -m unittest discover -s scripts   # coverage gate tests
+python3 -I -B -m unittest discover -s scripts   # script tests: coverage gate, design tokens (needs git on PATH), panel static checks
 ```
 
 ## Admin panel

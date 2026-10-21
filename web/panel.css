@@ -1,6 +1,7 @@
 * { box-sizing: border-box; }
 
 body {
+  color-scheme: light dark;
   margin: 0;
   background: var(--color-background);
   color: var(--color-text-primary);
@@ -78,6 +79,8 @@ main { padding: var(--space-lg) var(--space-xl) var(--space-xl); max-width: 1100
   color: var(--color-on-accent);
 }
 
+.notice .button { margin-left: var(--space-md); }
+
 .badge {
   display: inline-block;
   padding: 0 var(--space-sm);
@@ -89,6 +92,7 @@ main { padding: var(--space-lg) var(--space-xl) var(--space-xl); max-width: 1100
   font-weight: var(--font-title-weight);
 }
 
+.badge.neutral { color: var(--color-text-secondary); }
 .badge.ok { border-color: var(--color-success); color: var(--color-success); }
 .badge.blocked { border-color: var(--color-danger); color: var(--color-danger); }
 

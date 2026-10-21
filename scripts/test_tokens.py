@@ -75,6 +75,21 @@ class TokensTest(unittest.TestCase):
             root = make_layout(tmp)
             self.assertEqual(run_tokens(root, "--check").returncode, 1)
 
+    def test_failed_generation_keeps_existing_css(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_layout(tmp)
+            self.assertEqual(run_tokens(root).returncode, 0)
+            css = os.path.join(root, "web", "tokens.css")
+            with open(css, "rb") as fh:
+                before = fh.read()
+            generator = os.path.join(root, GENERATOR_REL, "generate.py")
+            with open(generator, "w", encoding="utf-8") as fh:
+                fh.write("import sys\nopen(sys.argv[sys.argv.index('--css') + 1], 'w').write('partial')\nsys.exit(3)\n")
+            self.assertEqual(run_tokens(root).returncode, 1)
+            with open(css, "rb") as fh:
+                self.assertEqual(fh.read(), before)
+            self.assertEqual(os.listdir(os.path.join(root, "web")), ["tokens.css"])
+
     def test_committed_tokens_css_is_current(self):
         result = run_tokens(ROOT, "--check")
         self.assertEqual(result.returncode, 0, result.stderr)

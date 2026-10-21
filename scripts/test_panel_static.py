@@ -89,6 +89,29 @@ class PanelStaticTest(unittest.TestCase):
         self.assertIn('role="tablist"', html)
         self.assertIn("aria-live", html)
 
+    def test_load_policy_guards_against_failed_initial_load(self):
+        source = read("app.js")
+        self.assertIn("res.status !== 200", source)
+        self.assertIn("typeof active.version", source)
+        self.assertIn("showLoadError", source)
+        html = read("index.html")
+        self.assertIn('id="retry"', html)
+        self.assertRegex(html, r'<textarea[^>]*\bdisabled\b')
+        self.assertRegex(html, r'<button[^>]*id="save-draft"[^>]*\bdisabled\b')
+
+    def test_save_and_publish_are_guarded_and_exclusive(self):
+        source = read("app.js")
+        self.assertIn("if (!state.editorLoaded || state.busy)", source)
+        self.assertIn("setBusy(", source)
+
+    def test_decision_other_than_deny_allow_is_neutral(self):
+        source = read("app.js")
+        self.assertIn('"allow"', source)
+        self.assertIn("badge neutral", source)
+
+    def test_color_scheme_declared(self):
+        self.assertIn('name="color-scheme"', read("index.html"))
+
     def test_css_uses_token_variables_for_colors(self):
         css = read("panel.css")
         self.assertIsNone(re.search(r"#[0-9A-Fa-f]{3,8}\b", css))

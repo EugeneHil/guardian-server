@@ -40,7 +40,22 @@ def main(argv):
         swift = os.path.join(tmp, "Tokens.swift")
         if not args.check:
             os.makedirs(os.path.dirname(CSS_PATH), exist_ok=True)
-            return 0 if generate(CSS_PATH, swift) else 1
+            staged = os.path.join(tmp, "tokens.css")
+            if not generate(staged, swift):
+                return 1
+            # Stage next to the target so os.replace is atomic on the same filesystem.
+            with open(staged, "rb") as fh:
+                data = fh.read()
+            fd, partial = tempfile.mkstemp(dir=os.path.dirname(CSS_PATH), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "wb") as out:
+                    out.write(data)
+                os.replace(partial, CSS_PATH)
+            except BaseException:
+                if os.path.exists(partial):
+                    os.unlink(partial)
+                raise
+            return 0
         fresh = os.path.join(tmp, "tokens.css")
         if not generate(fresh, swift):
             return 1

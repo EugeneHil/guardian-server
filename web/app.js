@@ -12,7 +12,8 @@
     savedText: null, // editor text of the last save that returned valid:true
     editorLoaded: false,
     timer: null,
-    eventsBusy: false
+    eventsBusy: false,
+    busy: false // a save or publish request is in flight
   };
 
   function $(id) { return document.getElementById(id); }
@@ -148,7 +149,28 @@
     var button = $("publish");
     var next = typeof state.activeVersion === "number" ? state.activeVersion + 1 : "";
     button.textContent = next === "" ? "Publish" : "Publish v" + next;
-    button.disabled = !(state.savedText !== null && $("draft-text").value === state.savedText);
+    button.disabled = state.busy || !state.editorLoaded ||
+      !(state.savedText !== null && $("draft-text").value === state.savedText);
+  }
+
+  function setBusy(busy) {
+    state.busy = busy;
+    $("save-draft").disabled = busy || !state.editorLoaded;
+    updatePublish();
+  }
+
+  // Blocks editing until the active policy has been loaded successfully.
+  function showLoadError(message, canRetry) {
+    state.editorLoaded = false;
+    state.savedText = null;
+    var editor = $("draft-text");
+    editor.value = "";
+    editor.disabled = true;
+    $("save-draft").disabled = true;
+    $("load-error-text").textContent = message;
+    $("retry").hidden = !canRetry;
+    $("load-error").hidden = false;
+    updatePublish();
   }
 
   // Shows the validation result; returns true when it says valid.
@@ -166,36 +188,45 @@
 
   function loadPolicy() {
     return api("GET", "/api/v1/admin/policy").then(function (res) {
-      var data = isObject(res.body) ? res.body : {};
-      var active = isObject(data.active) ? data.active : {};
-      var version = typeof active.version === "number" ? active.version : null;
-      state.activeVersion = version;
-      $("active-badge").textContent = "Active v" + (version === null ? "?" : version);
+      var data = isObject(res.body) ? res.body : null;
+      var active = data && isObject(data.active) ? data.active : null;
+      if (res.status !== 200 || !active || typeof active.version !== "number" ||
+          !isObject(active.policy)) {
+        showLoadError("Could not load the active policy (HTTP " + res.status + ").", true);
+        return;
+      }
+      state.activeVersion = active.version;
+      $("active-badge").textContent = "Active v" + active.version;
       renderRules(active.policy);
+      $("load-error").hidden = true;
 
       var editor = $("draft-text");
       var draft = isObject(data.draft) ? data.draft : null;
+      editor.disabled = false;
       if (!state.editorLoaded) {
+        state.savedText = null;
         if (draft && typeof draft.text === "string") {
           editor.value = draft.text;
           if (isObject(draft.validation) && applyValidation(draft.validation)) {
             state.savedText = editor.value;
           }
         } else {
-          var policy = isObject(active.policy) ? active.policy : { schemaVersion: 1, rules: [] };
-          editor.value = JSON.stringify(Object.assign({}, policy, { version: 0 }), null, 2);
+          editor.value = JSON.stringify(Object.assign({}, active.policy, { version: 0 }), null, 2);
         }
         state.editorLoaded = true;
       }
+      $("save-draft").disabled = state.busy;
       updatePublish();
-    }).catch(function (error) {
-      setStatus(error.message, "bad");
+    }, function (error) {
+      var auth = error.message === AUTH_MESSAGE;
+      showLoadError(error.message, !auth);
     });
   }
 
   function saveDraft() {
+    if (!state.editorLoaded || state.busy) { return; }
     var text = $("draft-text").value;
-    $("save-draft").disabled = true;
+    setBusy(true);
     setStatus("Saving…", "");
     api("PUT", "/api/v1/admin/policy/draft", text).then(function (res) {
       if (res.status !== 200) {
@@ -209,12 +240,13 @@
     }).catch(function (error) {
       setStatus(error.message, "bad");
     }).then(function () {
-      $("save-draft").disabled = false;
+      setBusy(false);
     });
   }
 
   function publish() {
-    $("publish").disabled = true;
+    if (!state.editorLoaded || state.busy) { return; }
+    setBusy(true);
     api("POST", "/api/v1/admin/policy/publish").then(function (res) {
       var body = isObject(res.body) ? res.body : {};
       if (res.status === 200 && typeof body.version === "number") {
@@ -235,7 +267,8 @@
       updatePublish();
     }).catch(function (error) {
       setStatus(error.message, "bad");
-      updatePublish();
+    }).then(function () {
+      setBusy(false);
     });
   }
 
@@ -262,7 +295,6 @@
     }
     list.forEach(function (item) {
       var e = isObject(item) ? item : {};
-      var blocked = e.decision === "deny";
       var row = el("tr");
       row.appendChild(el("td", "", formatTime(e.ts)));
       row.appendChild(el("td", "", asText(e.agentId)));
@@ -271,7 +303,13 @@
       row.appendChild(el("td", "mono", proc));
       row.appendChild(el("td", "mono", asText(e.file)));
       var decision = el("td");
-      decision.appendChild(el("span", "badge " + (blocked ? "blocked" : "ok"), blocked ? "Blocked" : "OK"));
+      if (e.decision === "deny") {
+        decision.appendChild(el("span", "badge blocked", "Blocked"));
+      } else if (e.decision === "allow") {
+        decision.appendChild(el("span", "badge ok", "OK"));
+      } else {
+        decision.appendChild(el("span", "badge neutral", asText(e.decision) || "?"));
+      }
       row.appendChild(decision);
       row.appendChild(el("td", "mono", asText(e.ruleId)));
       body.appendChild(row);
@@ -311,6 +349,7 @@
     initTabs();
     $("save-draft").addEventListener("click", saveDraft);
     $("publish").addEventListener("click", publish);
+    $("retry").addEventListener("click", loadPolicy);
     $("draft-text").addEventListener("input", updatePublish);
     document.addEventListener("visibilitychange", function () {
       updateRefresh();
