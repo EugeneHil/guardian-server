@@ -17,6 +17,9 @@ add_subdirectory(external/warden-core)
 
 # Later tasks append their source files here.
 set(WARDEN_SERVER_SOURCES
+    src/crypto.cpp
+    src/fs_util.cpp
+    src/timeutil.cpp
     src/version.cpp
 )
 
