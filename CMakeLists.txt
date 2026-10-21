@@ -22,6 +22,7 @@ set(WARDEN_SERVER_SOURCES
     src/crypto.cpp
     src/file_policy_store.cpp
     src/fs_util.cpp
+    src/policy_service.cpp
     src/timeutil.cpp
     src/version.cpp
 )
