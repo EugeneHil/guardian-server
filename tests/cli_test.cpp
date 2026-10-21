@@ -147,6 +147,15 @@ TEST_F(CliTest, TokenAddInvalidIdExits1) {
   EXPECT_NE(r.err.find("invalid agent id"), std::string::npos);
 }
 
+TEST_F(CliTest, TokenAddInvalidIdIsReportedEvenWithCorruptStore) {
+  writeFileAtomic(fs::path(dataDir()) / "agents.json", "not json");
+  for (const char* sub : {"add", "remove"}) {
+    const auto r = run({"token", sub, "bad id", "--data-dir", dataDir()});
+    EXPECT_EQ(r.code, 1);
+    EXPECT_NE(r.err.find("invalid agent id"), std::string::npos) << sub;
+  }
+}
+
 TEST_F(CliTest, TokenListNeverPrintsHashesOrTokens) {
   const auto a = run({"token", "add", "alpha", "--data-dir", dataDir()});
   const auto b = run({"token", "add", "beta", "--data-dir", dataDir()});
@@ -295,6 +304,35 @@ TEST_F(CliTest, ServeWithCorruptPolicyStoreExits1) {
   EXPECT_EQ(r.code, 1);
   EXPECT_NE(r.err.find("error: cannot open storage"), std::string::npos);
   EXPECT_EQ(r.err.find(kTestPassword), std::string::npos);
+}
+
+TEST_F(CliTest, StopCallableIsASafeNoOpAfterRunCliReturned) {
+  const auto cfg = root_ / "serve.json";
+  writeFileAtomic(cfg, R"({"host":"127.0.0.1","port":18443,"allowInsecureHttp":true})");
+  std::function<void()> captured;
+  ServeHooks hooks;
+  hooks.onReady = [&captured](const std::function<void()>& stop) {
+    captured = stop;
+    stop();
+  };
+  std::ostringstream out;
+  std::ostringstream err;
+  const EnvLookup lookup = [](std::string_view key) -> std::optional<std::string> {
+    if (key == "WARDEN_ADMIN_PASSWORD") {
+      return std::string(kTestPassword);
+    }
+    if (key == "WARDEN_DATA_DIR") {
+      return (fs::temp_directory_path() / "warden-cli-stop-test").string();
+    }
+    return std::nullopt;
+  };
+  const NowFn now = [] { return std::chrono::system_clock::now(); };
+  ASSERT_EQ(runCli({"serve", "--config", cfg.string()}, out, err, lookup, now, hooks), 0);
+  ASSERT_TRUE(static_cast<bool>(captured));
+  captured();  // the server is gone: must be a no-op, not a use-after-free
+  captured();
+  std::error_code ec;
+  fs::remove_all(fs::temp_directory_path() / "warden-cli-stop-test", ec);
 }
 
 TEST_F(CliTest, ServeStartsAndStopsOnLoopbackPlainHttp) {

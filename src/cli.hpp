@@ -12,9 +12,9 @@ namespace warden::server {
 
 // Optional integration points for `serve`; used by main for signal handling and by tests.
 struct ServeHooks {
-  // Called once, after the server is built and before it starts serving. `stop` is the server's
-  // thread-safe, idempotent stop function and stays valid until runCli returns; it must not be
-  // called from a signal handler or from the access log.
+  // Called once, after the server is built and before it starts serving. `stop` is a thread-safe,
+  // idempotent stop function that stays callable after runCli returns (then it is a no-op); it must
+  // not be called from a signal handler or from the access log.
   std::function<void(const std::function<void()>& stop)> onReady;
 };
 

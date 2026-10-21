@@ -5,10 +5,13 @@
 #include <exception>
 #include <filesystem>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <ostream>
 #include <set>
 #include <string_view>
+#include <utility>
 
 #include "agent_store.hpp"
 #include "api.hpp"
@@ -142,6 +145,10 @@ int runToken(const std::vector<std::string>& args, std::ostream& out, std::ostre
     return usageError(err, wanted == 0 ? "token list takes no arguments"
                                        : "token " + sub + " needs exactly one <agentId>");
   }
+  if (sub != "list" && !isValidAgentId(parsed.positionals.front())) {
+    err << "error: invalid agent id (allowed: A-Z a-z 0-9 . _ -, 1 to 64 characters)\n";
+    return kExitError;
+  }
   try {
     FileAgentStore store(dataDirFor(parsed, env), now);
     if (sub == "list") {
@@ -151,10 +158,6 @@ int runToken(const std::vector<std::string>& args, std::ostream& out, std::ostre
       return kExitOk;
     }
     const std::string& id = parsed.positionals.front();
-    if (!isValidAgentId(id)) {
-      err << "error: invalid agent id (allowed: A-Z a-z 0-9 . _ -, 1 to 64 characters)\n";
-      return kExitError;
-    }
     if (sub == "remove") {
       if (!store.remove(id)) {
         err << "error: unknown agent\n";
@@ -214,8 +217,15 @@ int runCertGenerate(const std::vector<std::string>& args, std::ostream& out, std
   const fs::path dir = flag(parsed, "--out-dir").value_or(kDefaultCertDir);
   const fs::path certFile = dir / kCertFileName;
   const fs::path keyFile = dir / kKeyFileName;
-  std::error_code ec;
-  if (fs::exists(certFile, ec) || fs::exists(keyFile, ec)) {
+  std::error_code certEc;
+  std::error_code keyEc;
+  const bool certExists = fs::exists(certFile, certEc);
+  const bool keyExists = fs::exists(keyFile, keyEc);
+  if (certEc || keyEc) {
+    err << "error: cannot inspect the output directory\n";
+    return kExitError;
+  }
+  if (certExists || keyExists) {
     err << "error: the certificate or its private key already exists in the output directory; "
            "refusing to overwrite\n";
     return kExitError;
@@ -227,11 +237,17 @@ int runCertGenerate(const std::vector<std::string>& args, std::ostream& out, std
     err << "error: cannot generate a certificate (check --host)\n";
     return kExitError;
   }
+  bool keyWritten = false;
   try {
     writeFileAtomic(keyFile, pair.keyPem, true);
+    keyWritten = true;
     writeFileAtomic(certFile, pair.certPem);
     out << "SPKI pin: " << spkiPin(pair.certPem) << "\n";
   } catch (const std::exception&) {
+    if (keyWritten) {
+      std::error_code ignored;
+      fs::remove(keyFile, ignored);  // best effort, so a retry is not blocked
+    }
     err << "error: cannot write the certificate files\n";
     return kExitError;
   }
@@ -275,6 +291,27 @@ int runCert(const std::vector<std::string>& args, std::ostream& out, std::ostrea
   return usageError(err, "unknown cert subcommand");
 }
 
+// Shared between runServe and the stop callable handed out through ServeHooks. The callable may
+// outlive runServe (a watcher thread), so it only touches the server while armed, under the mutex.
+struct StopState {
+  std::mutex mutex;
+  HttpServer* server = nullptr;
+};
+
+class StopDisarmer {
+ public:
+  explicit StopDisarmer(std::shared_ptr<StopState> state) : state_(std::move(state)) {}
+  StopDisarmer(const StopDisarmer&) = delete;
+  StopDisarmer& operator=(const StopDisarmer&) = delete;
+  ~StopDisarmer() {
+    const std::scoped_lock lock(state_->mutex);
+    state_->server = nullptr;
+  }
+
+ private:
+  std::shared_ptr<StopState> state_;
+};
+
 int runServe(const std::vector<std::string>& args, std::ostream& err, const EnvLookup& env,
              const NowFn& now, const ServeHooks& hooks) {
   ParsedArgs parsed;
@@ -317,13 +354,22 @@ int runServe(const std::vector<std::string>& args, std::ostream& err, const EnvL
     options.host = config.host;
     options.port = config.port;
     options.tls = config.tls;
-    options.accessLog = [&err](const std::string& line) { err << line << "\n"; };
+    options.accessLog = [&err](const std::string& line) { err << (line + "\n"); };
     HttpServer server(api, options);
+    const auto stopState = std::make_shared<StopState>();
+    stopState->server = &server;
+    // Declared after `server`, so it disarms before the server is destroyed.
+    const StopDisarmer disarm(stopState);
 
     err << "listening on " << config.host << ":" << config.port << " ("
         << (config.tls ? "tls" : "plain http") << ")\n";
     if (hooks.onReady) {
-      hooks.onReady([&server] { server.stop(); });
+      hooks.onReady([stopState] {
+        const std::scoped_lock lock(stopState->mutex);
+        if (stopState->server != nullptr) {
+          stopState->server->stop();
+        }
+      });
     }
     if (!server.run()) {
       err << "error: cannot start the server (address in use or TLS files unreadable)\n";

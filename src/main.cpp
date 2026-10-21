@@ -53,8 +53,11 @@ int main(int argc, char** argv) try {
     args.emplace_back(argv[i]);
   }
 
-  std::signal(SIGINT, onSignal);
-  std::signal(SIGTERM, onSignal);
+  // Only `serve` handles signals; Ctrl-C keeps its default behaviour for other commands.
+  if (!args.empty() && args.front() == "serve") {
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
+  }
 
   // HttpServer::stop() is not async-signal-safe, so a watcher thread turns the flag into a stop.
   std::atomic<bool> finished{false};
