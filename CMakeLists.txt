@@ -20,6 +20,7 @@ set(WARDEN_SERVER_SOURCES
     src/agent_store.cpp
     src/config.cpp
     src/crypto.cpp
+    src/file_policy_store.cpp
     src/fs_util.cpp
     src/timeutil.cpp
     src/version.cpp
