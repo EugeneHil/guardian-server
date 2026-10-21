@@ -18,6 +18,7 @@ add_subdirectory(external/warden-core)
 # Later tasks append their source files here.
 set(WARDEN_SERVER_SOURCES
     src/agent_store.cpp
+    src/auth.cpp
     src/config.cpp
     src/crypto.cpp
     src/event.cpp
