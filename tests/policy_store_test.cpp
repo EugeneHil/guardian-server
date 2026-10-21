@@ -214,3 +214,45 @@ TEST(PolicyStore, MissingPointerWithOnlyV1BootstrapsAgain) {
   EXPECT_EQ(reopened.active().version, 1);
   EXPECT_EQ(readFile(dir.policies() / "active"), "1\n");
 }
+
+TEST(PolicyStore, UnparsableActiveFileFailsClosed) {
+  const std::string bad[] = {"", "{", R"({"schemaVersion":1,"version":1,"rul)", "[]", "null"};
+  for (const auto& content : bad) {
+    TempDir dir;
+    {
+      FilePolicyStore store(dir.path());
+    }
+    writeFileAtomic(dir.policies() / "v1.json", content);
+    EXPECT_THROW(FilePolicyStore{dir.path()}, StorageError) << "content: '" << content << "'";
+  }
+}
+
+TEST(PolicyStore, TruncatedNewestVersionWithPointerFailsClosed) {
+  TempDir dir;
+  {
+    FilePolicyStore store(dir.path());
+    store.commit({2, policyJson(2)});
+  }
+  writeFileAtomic(dir.policies() / "v2.json", policyJson(2).substr(0, 20));
+  EXPECT_THROW(FilePolicyStore{dir.path()}, StorageError);
+}
+
+TEST(PolicyStore, VersionMismatchBetweenPointerAndFileFailsClosed) {
+  TempDir dir;
+  {
+    FilePolicyStore store(dir.path());
+    store.commit({2, policyJson(2)});
+  }
+  writeFileAtomic(dir.policies() / "v2.json", policyJson(7));
+  EXPECT_THROW(FilePolicyStore{dir.path()}, StorageError);
+}
+
+TEST(PolicyStore, ValidActiveFileStillStarts) {
+  TempDir dir;
+  {
+    FilePolicyStore store(dir.path());
+    store.commit({2, policyJson(2)});
+  }
+  FilePolicyStore reopened(dir.path());
+  EXPECT_EQ(reopened.active().version, 2);
+}

@@ -2,6 +2,8 @@
 #include <string>
 #include <system_error>
 
+#include <warden/policy_parser.hpp>
+
 #include "fs_util.hpp"
 #include "policy_store.hpp"
 
@@ -59,6 +61,12 @@ FilePolicyStore::FilePolicyStore(const std::filesystem::path& dataDir)
   auto json = readFile(versionFile(version));
   if (!json) {
     throw StorageError("missing policy file: " + versionFile(version).string());
+  }
+  // Fail closed: a crash can leave the pointer naming an empty or partial file.
+  const warden::ParseResult parsed = warden::parsePolicy(*json);
+  if (!parsed.policy.has_value() || parsed.policy->version != version) {
+    throw StorageError("active policy file is invalid or does not match its pointer: " +
+                       versionFile(version).string());
   }
   active_ = PolicyDoc{version, std::move(*json)};
 }
