@@ -8,7 +8,7 @@
        warden-server.exe and web/ entries (zip-slip protection).
     2. Extract it into <Root>\staging (the service keeps running meanwhile).
     3. Stop the service, copy bin to bin.prev and web to web.prev, install the new files.
-    4. Start the service and poll https://127.0.0.1:<Port>/healthz for 30 seconds.
+    4. Start the service and poll https://127.0.0.1:<Port>/healthz for 60 seconds.
     5. On any failure restore bin.prev and web.prev, restart the service and exit 1.
 
   The directories already exist with their ACLs (created by the runbook and install-service.ps1),
@@ -22,7 +22,7 @@ param(
   [string]$Root = 'C:\warden',
   [string]$ServiceName = 'WardenServer',
   [int]$Port = 8443,
-  [int]$HealthTimeoutSeconds = 30,
+  [int]$HealthTimeoutSeconds = 60,
   [switch]$Bootstrap
 )
 
