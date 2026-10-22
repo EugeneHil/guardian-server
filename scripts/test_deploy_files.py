@@ -210,12 +210,12 @@ class RunbookTest(unittest.TestCase):
     def test_secret_names_and_environment(self):
         for needle in ("VPS_HOST", "VPS_USER", "VPS_SSH_KEY", "VPS_KNOWN_HOSTS", "production",
                        "token add mac-eugene", "PasswordAuthentication no", "8443",
-                       "winget", "NSSM", "--out-dir C:\\warden\\data\\tls", "Rollback"):
+                       "NSSM", "--out-dir C:\\warden\\data\\tls", "Rollback"):
             self.assertIn(needle, self.text)
 
     def test_hardening_details(self):
         for needle in ("sshd -t", "administrators_authorized_keys", "Selected tags", "v*.*.*",
-                       "ruleset", "-ExecutionPolicy Bypass", "--scope machine", "Program Files\\nssm",
+                       "ruleset", "-ExecutionPolicy Bypass", "Program Files\\nssm",
                        "-NoStart", "ABOVE", "SECOND"):
             self.assertIn(needle, self.text)
         self.assertNotIn("restart the service (`Restart-Service WardenServer`)", self.text)
@@ -233,6 +233,16 @@ class RunbookTest(unittest.TestCase):
         self.assertTrue(bootstrap)
         for line in bootstrap:
             self.assertIn("-ExecutionPolicy Bypass", line)
+
+    def test_windows_server_without_winget(self):
+        self.assertNotIn("winget install", self.text)
+        self.assertNotIn("winget list", self.text)
+        for needle in ("Get-AuthenticodeSignature", "vc_redist.x64.exe", "Get-FileHash",
+                       "99F5045FFFBFFB745D67FE3A065A953C4A3D9C253B868892D9B685B0EE7D07B8",
+                       "2.24-101-g897c7ad", "curl.exe", "CoreNet-", "warden-fw-disabled",
+                       "Start-Service sshd", "AuthenticationMethods publickey", "sshd.exe\" -T"):
+            self.assertIn(needle, self.text)
+        self.assertNotIn("KbdInteractiveAuthentication no", self.text)
 
     def test_no_real_hosts_or_keys(self):
         self.assertIn("<vps-ip>", self.text)
