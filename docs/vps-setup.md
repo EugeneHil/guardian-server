@@ -21,11 +21,12 @@ C:\warden\
 
 ## Step 1. OpenSSH Server, key-only login, deploy user
 
-Install the server and make PowerShell the default shell:
+Install the server, start it once and make PowerShell the default shell. `sshd_config` does not exist until the service has started for the first time, so do not skip `Start-Service`:
 
 ```powershell
 Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
 Set-Service -Name sshd -StartupType Automatic
+Start-Service sshd
 New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell `
   -Value 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -PropertyType String -Force
 ```
@@ -69,10 +70,13 @@ Now edit `C:\ProgramData\ssh\sshd_config` in an editor. The stock file ends with
 PasswordAuthentication no
 PubkeyAuthentication yes
 PermitEmptyPasswords no
+AuthenticationMethods publickey
 AllowUsers warden-deploy <owner-user>
 ```
 
 Write `<owner-user>` in lowercase: Windows OpenSSH matches `AllowUsers` names against the lowercased account name, so a mixed-case entry can lock you out.
+
+`PasswordAuthentication no` alone is not enough: sshd still advertises `keyboard-interactive`, and the Windows build does not honour the `KbdInteractiveAuthentication` directive (`sshd -T` keeps reporting `yes`). `AuthenticationMethods publickey` is honoured and makes a key the only way in.
 
 and add this block at the very end, after the existing `Match` blocks:
 
@@ -88,7 +92,7 @@ The configuration must validate before the restart, and you prove key login in a
 Restart-Service sshd
 ```
 
-Keep the first session open. From the Mac, in a SECOND terminal, log in with each key (see the verification below) before you close the first session; if either fails, put `PasswordAuthentication yes` back, run `sshd -t`, restart sshd and fix the key files first.
+Keep the first session open. From the Mac, in a SECOND terminal, log in with each key (see the verification below) before you close the first session; if either fails, remove the `AuthenticationMethods` line and put `PasswordAuthentication yes` back, run `sshd -t`, restart sshd and fix the key files first (the hosting provider's console stays available as a fallback).
 
 Verification (from the Mac):
 
@@ -96,33 +100,62 @@ Verification (from the Mac):
 ssh -i ~/.ssh/warden-deploy -o BatchMode=yes warden-deploy@<vps-ip> "whoami"           # prints the deploy user
 ssh -o BatchMode=yes <owner-user>@<vps-ip> "whoami"                                      # owner key works
 ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password warden-deploy@<vps-ip>   # must be refused
+ssh -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive warden-deploy@<vps-ip>   # refused, and the list of methods in the error is only (publickey)
 ```
 
 ```powershell
+& "$env:SystemRoot\System32\OpenSSH\sshd.exe" -T | Select-String -Pattern 'authenticationmethods|passwordauthentication|pubkeyauthentication|allowusers'   # publickey, no, yes, both users
 Select-String -Path C:\ProgramData\ssh\sshd_config -Pattern '^PasswordAuthentication'     # no
 (Get-LocalGroupMember Administrators).Name -contains "$env:COMPUTERNAME\warden-deploy"      # False
 ```
 
 ## Step 2. Windows Firewall: TCP 22 and 8443 only
 
+Add the two allow rules first and switch the default to "block" last, so you never block yourself:
+
 ```powershell
-Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True -DefaultInboundAction Block
 New-NetFirewallRule -DisplayName 'Warden SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
 New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
 ```
 
-Keep your remote-desktop rule if you administer the VPS through it (and restrict it too). Recommended: limit 8443 to the addresses that need it (your office or home address, the hosts the Macs connect from) instead of the whole internet:
+Windows ships dozens of inbound allow rules (file sharing, remote management, discovery, streaming and more) that would defeat "only 22 and 8443". Their display names are localized and differ between machines, so do not disable them one by one by name. Disable everything except a keep list, matching on the language-independent rule `Name`. Keep `CoreNet-*` (Core Networking: DHCP, IPv6 and ICMPv6; without DHCP the VPS can lose its address), the OpenSSH rule, the two `Warden*` rules and anything you deliberately use (for example your own VPN: add its rule to `$keepExtra`). Remote desktop is disabled here; keep it only if you administer the VPS through it, and then restrict it to your address.
+
+First list what would stay (nothing is changed yet) and check that the list contains exactly what you expect:
+
+```powershell
+$keepExtra = @()   # e.g. @('*WireGuard*')
+$all = Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow
+$toDisable = $all | Where-Object {
+  $n = $_.Name; $d = $_.DisplayName
+  -not ($n -like 'CoreNet-*' -or $n -like '*OpenSSH*' -or $d -like 'Warden*' -or
+        ($keepExtra | Where-Object { $n -like $_ -or $d -like $_ }))
+}
+"Keep: $($all.Count - $toDisable.Count), disable: $($toDisable.Count)"
+$all | Where-Object { $toDisable.Name -notcontains $_.Name } | Select-Object Name, DisplayName
+```
+
+Then disable the rest. The names are saved so you can undo it; set `$expected` to the `Keep` number printed above, so a wrong keep list stops the script instead of disabling too much:
+
+```powershell
+$expected = 0   # the "Keep" number from the listing above
+if (($all.Count - $toDisable.Count) -eq $expected) {
+  $toDisable.Name | Set-Content -Path C:\warden-fw-disabled.txt
+  $toDisable | Disable-NetFirewallRule
+} else { 'Keep count differs from $expected: nothing was disabled' }
+# undo: Get-Content C:\warden-fw-disabled.txt | ForEach-Object { Enable-NetFirewallRule -Name $_ }
+```
+
+Now switch the default to "block" and confirm the allow rules still work (the hosting provider's console does not depend on the OS firewall, so it stays available if something goes wrong):
+
+```powershell
+Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True -DefaultInboundAction Block
+Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction
+```
+
+Recommended: limit 8443 to the addresses that need it (your office or home address, the hosts the Macs connect from) instead of the whole internet, when those addresses are stable:
 
 ```powershell
 Set-NetFirewallRule -DisplayName 'Warden HTTPS' -RemoteAddress '<allowed-address-1>','<allowed-address-2>'
-```
-
-Windows ships many inbound allow rules (file sharing, remote management, ping and more) that would defeat "only 22 and 8443". Review every enabled inbound allow rule and disable what you do not need, keeping remote desktop only if you use it (restricted to your address):
-
-```powershell
-Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow |
-  Select-Object DisplayName, Profile | Sort-Object DisplayName
-Disable-NetFirewallRule -DisplayName '<rule name to disable>'
 ```
 
 Verification:
@@ -136,29 +169,38 @@ From the Mac, `Test-NetConnection <vps-ip> -Port 22` (PowerShell) or `nc -vz <vp
 
 ## Step 3. VC++ redistributable and NSSM
 
+Windows Server has no `winget`, so both are downloaded directly. The binaries link the C++ runtime dynamically, so the Microsoft Visual C++ Redistributable (x64) is required. It is signed, so verify the signature before running it:
+
 ```powershell
-winget install --id Microsoft.VCRedist.2015+.x64 --accept-package-agreements --accept-source-agreements
-winget install --id NSSM.NSSM --scope machine --accept-package-agreements --accept-source-agreements
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$vc = "$env:TEMP\vc_redist.x64.exe"
+Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
+Get-AuthenticodeSignature $vc | Select-Object Status, @{n='Signer';e={$_.SignerCertificate.Subject}}   # Valid, CN=Microsoft Corporation
+Start-Process -FilePath $vc -ArgumentList '/install','/quiet','/norestart' -Wait
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64' | Select-Object Installed, Version   # Installed 1
 ```
 
-NSSM is a portable package, so winget may still place it under your own profile (`%LOCALAPPDATA%\Microsoft\WinGet`), where the service account cannot read it and where it is not admin-protected. `install-service.ps1` refuses such a path. Copy it to an admin-only location:
+Do not run the installer unless the status is `Valid` and the signer is Microsoft Corporation. (In Windows PowerShell 5.1 `Start-Process -PassThru` may print an empty exit code; the registry check is the reliable one.)
+
+NSSM is not signed, so verify the download against a pinned SHA-256. Use the build `2.24-101-g897c7ad`: the stock 2.24 release cannot start services reliably on Windows 10 1703 and newer, including Server 2022. The hash below is the one published in the `microsoft/winget-pkgs` manifest `NSSM.NSSM` 2.24-101-g897c7ad:
 
 ```powershell
-$src = (Get-Command nssm.exe).Source        # wherever winget put it
+$zip = "$env:TEMP\nssm.zip"
+Invoke-WebRequest -UseBasicParsing -Uri 'https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip' -OutFile $zip
+(Get-FileHash $zip -Algorithm SHA256).Hash    # must equal 99F5045FFFBFFB745D67FE3A065A953C4A3D9C253B868892D9B685B0EE7D07B8
+```
+
+Only if the hash is identical, install it into an admin-only location. `C:\Program Files` is writable only by Administrators and TrustedInstaller by default, and `install-service.ps1` refuses a path the service account or a normal user could modify:
+
+```powershell
+$x = "$env:TEMP\nssm-extract"
+Expand-Archive -Path $zip -DestinationPath $x -Force
 New-Item -ItemType Directory -Force 'C:\Program Files\nssm' | Out-Null
-Copy-Item $src 'C:\Program Files\nssm\nssm.exe' -Force
+Copy-Item "$x\nssm-2.24-101-g897c7ad\win64\nssm.exe" 'C:\Program Files\nssm\nssm.exe' -Force
+& 'C:\Program Files\nssm\nssm.exe' version    # NSSM 2.24-101-g897c7ad 64-bit
 ```
 
-`C:\Program Files` is writable only by Administrators and TrustedInstaller by default. Pass `-Nssm 'C:\Program Files\nssm\nssm.exe'` in step 7.
-
-Open a new PowerShell so the PATH refreshes. Verification:
-
-```powershell
-winget list --id Microsoft.VCRedist.2015+.x64
-& 'C:\Program Files\nssm\nssm.exe' version
-```
-
-If `nssm.exe` is not found, locate it (`Get-ChildItem "$env:ProgramFiles\WinGet","$env:LOCALAPPDATA\Microsoft\WinGet" -Recurse -Filter nssm.exe`) and copy it as shown above.
+Pass `-Nssm 'C:\Program Files\nssm\nssm.exe'` in step 7. The site `nssm.cc` is sometimes unavailable (HTTP 503); retry later rather than taking the file from another place, because only this hash is trusted.
 
 ## Step 4. Directory layout and base ACLs
 
@@ -221,18 +263,32 @@ C:\warden\bin\warden-server.exe cert pin C:\warden\data\tls\server.crt    # same
 
 ## Step 6. Local config file
 
-The release archive does not ship the template, so copy it from your checkout first. Create `C:\warden\config.local.json` by hand from `config.example.json` (the file is ignored by git; never commit or paste it). Edit it on the VPS in an editor:
+The release archive does not ship the template, so copy it from your checkout first (the local config file is ignored by git; never commit or paste it):
 
 ```sh
 scp config.example.json <owner-user>@<vps-ip>:C:/warden/config.example.json   # on the Mac, from the repository checkout
 ```
 
+Create `C:\warden\config.local.json` from it on the VPS. This script generates a random admin password (24 characters) and prints it once; store it in your password manager straight away, never paste it anywhere else, and clear the console afterwards (`Clear-Host`). The private-key file written by `cert generate` is the only file in `data\tls` that is not a `.crt`; `install-service.ps1` expects it there:
+
 ```powershell
-Copy-Item C:\warden\config.example.json C:\warden\config.local.json
-notepad.exe C:\warden\config.local.json
+$tls = 'C:\warden\data\tls'
+$key = Get-ChildItem $tls -File | Where-Object { $_.Extension -ne '.crt' } | Select-Object -First 1
+if (-not $key) { throw 'private key file not found in data\tls' }
+$bytes = New-Object byte[] 18
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$pw = [Convert]::ToBase64String($bytes).Replace('+','A').Replace('/','b')
+$cfg = Get-Content C:\warden\config.example.json -Raw | ConvertFrom-Json
+$cfg.PSObject.Properties.Remove('_comment')
+$cfg.tls.certPath = 'C:/warden/data/tls/server.crt'
+$cfg.tls.keyPath  = "C:/warden/data/tls/$($key.Name)"
+$cfg.dataDir = 'C:/warden/data'; $cfg.webRoot = 'C:/warden/web'
+$cfg.allowInsecureHttp = $false; $cfg.adminPassword = $pw
+$cfg | ConvertTo-Json -Depth 5 | Set-Content -Path C:\warden\config.local.json -Encoding ascii
+"ADMIN PASSWORD (store it now, do not paste it anywhere): $pw"
 ```
 
-Set: `"allowInsecureHttp": false`, `"tls": { "certPath": "C:/warden/data/tls/server.crt", "keyPath": "C:/warden/data/tls/<private-key file>" }`, `"dataDir": "C:/warden/data"`, `"webRoot": "C:/warden/web"`, and `"adminPassword"` to a long random password (at least 12 characters) that you store in your password manager. `<private-key file>` is the private-key file written by `cert generate` next to the certificate in `data\tls` (list the directory; `install-service.ps1` expects it there).
+The result sets `allowInsecureHttp` to `false`, the certificate and key paths, `dataDir` to `C:/warden/data`, `webRoot` to `C:/warden/web` and the generated `adminPassword`. To change a value later, edit the file in an editor (`notepad.exe C:\warden\config.local.json`).
 
 Verification (without printing the password):
 
@@ -244,10 +300,10 @@ Select-String -Path C:\warden\config.local.json -Pattern 'allowInsecureHttp'
 ## Step 7. Register the service with NSSM
 
 ```powershell
-C:\warden\scripts\install-service.ps1 -DeployUser warden-deploy -Nssm 'C:\Program Files\nssm\nssm.exe'
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\warden\scripts\install-service.ps1 -DeployUser warden-deploy -Nssm 'C:\Program Files\nssm\nssm.exe'
 ```
 
-The scripts are copied, not signed, so the deploy workflow calls `apply-update.ps1` with `-ExecutionPolicy Bypass`; start the install script the same way (`powershell -NoProfile -ExecutionPolicy Bypass -File ...`) if your execution policy blocks it.
+The scripts are copied, not signed, so the deploy workflow calls `apply-update.ps1` with `-ExecutionPolicy Bypass`; start the install script the same way.
 
 The script registers `WardenServer` (NSSM; application `C:\warden\bin\warden-server.exe`, arguments `serve --config C:\warden\config.local.json`, working directory `C:\warden`), sends stdout/stderr to `C:\warden\logs` with rotation, starts it at boot, restarts it 5 seconds after a failure, stops it with a console Ctrl-C (`AppStopMethodConsole`) for a clean shutdown, and runs it as the virtual account `NT SERVICE\WardenServer`: no password, no interactive logon, and the only account besides Administrators that can read the TLS private key and the config file. It also lets the deploy user start and stop this one service, and applies the ACLs described in step 4. Re-run it any time; it edits the existing service. A re-run restarts the service (a short downtime) unless you pass `-NoStart`, which leaves it stopped for you to start.
 
@@ -256,7 +312,7 @@ Verification:
 ```powershell
 Get-Service WardenServer                                   # Running
 icacls.exe C:\warden\data\tls                              # SYSTEM, Administrators, NT SERVICE\WardenServer (R)
-Invoke-WebRequest https://127.0.0.1:8443/healthz -SkipCertificateCheck   # PowerShell 7 only; 200
+curl.exe -k -s -o NUL -w "healthz: %{http_code}`n" https://127.0.0.1:8443/healthz   # 200 (Windows PowerShell 5.1 has no -SkipCertificateCheck, so use curl.exe)
 Get-Content C:\warden\logs\warden-server.err.log -Tail 20
 ```
 
@@ -269,7 +325,8 @@ In the repository settings:
 1. Settings, Environments, New environment `production`, and configure it. These settings are MANDATORY, because the environment approval is the only gate in front of the secrets:
    - Required reviewers: the owner.
    - Deployment branches and tags: "Selected branches and tags" with exactly one rule, "Selected tags": `v*.*.*`. No branch may deploy.
-   - Settings, Rules, Rulesets: add a tag ruleset for `v*` that restricts creation, update and deletion of matching tags to the owner (no bypass for others).
+   - Leave "Prevent self-review" off: the owner is the only reviewer and also the one who pushes the tag, so self-review prevention would make every deployment unapprovable.
+   - Settings, Rules, Rulesets: add a tag ruleset for `v*` that restricts creation, update and deletion of matching tags to the owner. The only bypass actor is the repository Admin role (without a bypass actor nobody, including the owner, could create the release tag).
 2. In that environment add four secrets (environment secrets, not repository secrets):
 
 | Secret | Value |
@@ -290,7 +347,17 @@ ssh-keyscan -t ed25519 <vps-ip>            # the line goes into VPS_KNOWN_HOSTS
 ssh-keyscan -t ed25519 <vps-ip> | ssh-keygen -lf -   # fingerprint must equal the VPS output above
 ```
 
-Only when the two fingerprints match, store the `ssh-keyscan` line as `VPS_KNOWN_HOSTS`. The workflow uses `StrictHostKeyChecking=yes` with that file, so SSH never trusts on first use; a changed host key fails the deploy. Delete the local private key copy after storing it in the secret if you do not need it elsewhere.
+Only when the two fingerprints match, store the `ssh-keyscan` line as `VPS_KNOWN_HOSTS`. The secrets can be set in the web interface or with the GitHub CLI; the private key is read from the file and is never printed (replace `<fingerprint>` with the `SHA256:...` value you verified, so the line is stored only if the key has not changed since the comparison):
+
+```sh
+gh secret set VPS_SSH_KEY --env production --repo <owner>/warden-server < ~/.ssh/warden-deploy
+gh secret set VPS_HOST --env production --repo <owner>/warden-server --body <vps-ip>
+gh secret set VPS_USER --env production --repo <owner>/warden-server --body warden-deploy
+kh=$(ssh-keyscan -t ed25519 <vps-ip> 2>/dev/null)
+[ "$(printf '%s\n' "$kh" | ssh-keygen -lf - | awk '{print $2}')" = "<fingerprint>" ] \
+  && printf '%s\n' "$kh" | gh secret set VPS_KNOWN_HOSTS --env production --repo <owner>/warden-server
+```
+ The workflow uses `StrictHostKeyChecking=yes` with that file, so SSH never trusts on first use; a changed host key fails the deploy. Delete the local private key copy after storing it in the secret if you do not need it elsewhere.
 
 The workflow adds its own guards: the `build` job fails unless the commit is reachable from `origin/main`, and the `deploy` job (the only one that sees the secrets, and it checks out no repository code) runs only for `refs/tags/v*`. A manual run (`workflow_dispatch`) on a branch therefore builds but never deploys; to redeploy, run the workflow on an existing tag ref (Run workflow, choose the tag).
 
