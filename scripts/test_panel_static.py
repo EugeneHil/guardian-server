@@ -129,6 +129,23 @@ class PanelStaticTest(unittest.TestCase):
         used = set(re.findall(r"var\(\s*(--[a-z0-9-]+)", read("panel.css")))
         self.assertEqual(used - defined, set())
 
+    def test_process_column_shows_path_line(self):
+        source = read("app.js")
+        self.assertRegex(source, r"function processLines\s*\(")
+        self.assertRegex(source, r'el\(\s*"div"\s*,\s*"proc-path mono"')
+        self.assertRegex(source, r"\.title\s*=\s*path")
+        self.assertRegex(source, r"processLines\(\s*e\.process")
+        self.assertRegex(source, r"processLines\(\s*e\.responsible")
+        self.assertIsNone(re.search(r'proc\s*\+=\s*" ← "', source))
+
+    def test_process_path_class_is_styled_and_wraps(self):
+        css = read("panel.css")
+        match = re.search(r"\.proc-path\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(match)
+        self.assertIn("overflow-wrap", match.group(1))
+        self.assertIn("var(--color-text-secondary)", match.group(1))
+        self.assertIn("var(--font-caption-size)", match.group(1))
+
 
 if __name__ == "__main__":
     unittest.main()
