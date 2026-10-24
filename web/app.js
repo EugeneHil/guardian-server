@@ -283,6 +283,20 @@
     return asText(p.signingId) || asText(p.path) || "?";
   }
 
+  function processLines(proc, marker) {
+    var p = isObject(proc) ? proc : {};
+    var name = processText(p);
+    var path = asText(p.path);
+    var box = el("div", "proc");
+    box.appendChild(el("div", "", (marker || "") + name));
+    if (path && path !== name) {
+      var line = el("div", "proc-path mono", path);
+      line.title = path;
+      box.appendChild(line);
+    }
+    return box;
+  }
+
   function formatTime(ts) {
     var text = asText(ts);
     var date = new Date(text);
@@ -302,9 +316,10 @@
       var row = el("tr");
       row.appendChild(el("td", "", formatTime(e.ts)));
       row.appendChild(el("td", "", asText(e.agentId)));
-      var proc = processText(e.process);
-      if (isObject(e.responsible)) { proc += " ← " + processText(e.responsible); }
-      row.appendChild(el("td", "mono", proc));
+      var procCell = el("td", "mono");
+      procCell.appendChild(processLines(e.process, ""));
+      if (isObject(e.responsible)) { procCell.appendChild(processLines(e.responsible, "\u2190 ")); }
+      row.appendChild(procCell);
       row.appendChild(el("td", "mono", asText(e.file)));
       var decision = el("td");
       if (e.decision === "deny") {

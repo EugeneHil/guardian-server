@@ -170,6 +170,11 @@ class ApplyUpdateTest(unittest.TestCase):
             r"\[Net\.ServicePointManager\]::SecurityProtocol\s*=\s*\[Net\.ServicePointManager\]::SecurityProtocol"
             r"\s*-bor\s*\[Net\.SecurityProtocolType\]::Tls12")
 
+    def test_health_window_is_sixty_seconds(self):
+        # A service start takes about 15 s on the VPS; keep a generous window after it.
+        self.assertRegex(self.text, r"\[int\]\$HealthTimeoutSeconds = 60\b")
+        self.assertIn("for 60 seconds", self.text)
+
     def test_consumed_archive_is_removed_after_success(self):
         self.assertRegex(self.text, r"Remove-Item -LiteralPath \$zipFull")
 

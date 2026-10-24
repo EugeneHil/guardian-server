@@ -125,6 +125,12 @@ td.mono, .mono, .errors li, .editor {
   font-size: var(--font-mono-size);
   font-weight: var(--font-mono-weight);
 }
+.proc-path {
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption-size);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
 .muted { color: var(--color-text-secondary); font-size: var(--font-caption-size); }
 
 .label {
