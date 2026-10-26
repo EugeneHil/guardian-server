@@ -4,7 +4,7 @@
 
 namespace guardian::server {
 
-/// Semantic version of warden-server (the CMake PROJECT_VERSION).
+/// Semantic version of guardian-server (the CMake PROJECT_VERSION).
 std::string_view serverVersion() noexcept;
 
 }  // namespace guardian::server

@@ -69,7 +69,7 @@ def is_docs_path(path):
 GROUPS = {
     "submodule": Group(PATTERN, is_submodule_path, True),
     "cpp": Group(PATTERN, is_cpp_path, True),
-    "config": Group(PATTERN, is_config_path, False),
+    "config": Group(PATTERN, is_config_path, True),
     "scripts": Group(PATTERN, is_scripts_path, False),
     "docs": Group(PATTERN, is_docs_path, False),
     "all": Group(PATTERN, lambda path: True, False),
@@ -78,6 +78,17 @@ GROUPS = {
 # Files exempt from a group because they must spell the old name.
 SELF = "scripts/test_residual_names.py"
 ALLOW = {name: {SELF} for name in GROUPS}
+
+# The former WARDEN_* variables and the former header must stay spelled where the server
+# detects them (hard cut: they are refused, never read) and in the tests asserting that.
+_LEGACY_NAMES = {
+    "src/config.cpp": "lists the former WARDEN_* variables so legacyEnvVarProblem can refuse them",
+    "tests/config_test.cpp": "asserts legacyEnvVarProblem names each former variable",
+    "tests/cli_test.cpp": "asserts serve and token refuse to start with a former variable set",
+    "tests/api_admin_test.cpp": "asserts the former X-Warden-Request header is rejected",
+}
+for _group in ("config", "all"):
+    ALLOW[_group] |= set(_LEGACY_NAMES)
 
 
 def tracked_files():

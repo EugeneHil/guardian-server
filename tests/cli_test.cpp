@@ -36,7 +36,7 @@ class CliTest : public ::testing::Test {
     static std::atomic<int> counter{0};
     root_ =
         fs::temp_directory_path() /
-        ("warden-cli-test-" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
+        ("guardian-cli-test-" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
          "-" + std::to_string(counter++));
     fs::remove_all(root_);
     fs::create_directories(root_);
@@ -77,7 +77,7 @@ std::string trimNewline(std::string text) {
 TEST_F(CliTest, Version) {
   const auto r = run({"version"});
   EXPECT_EQ(r.code, 0);
-  EXPECT_EQ(r.out, "warden-server 0.1.0\n");
+  EXPECT_EQ(r.out, "guardian-server 0.1.0\n");
 }
 
 TEST_F(CliTest, HelpAndNoArgs) {
@@ -127,7 +127,7 @@ TEST_F(CliTest, TokenAddPrintsOnlyTokenAndItAuthenticates) {
 }
 
 TEST_F(CliTest, TokenCommandsUseDataDirFromEnv) {
-  const auto r = run({"token", "add", "agent-1"}, {{"WARDEN_DATA_DIR", dataDir()}});
+  const auto r = run({"token", "add", "agent-1"}, {{"GUARDIAN_DATA_DIR", dataDir()}});
   ASSERT_EQ(r.code, 0) << r.err;
   EXPECT_TRUE(fs::exists(fs::path(dataDir()) / "agents.json"));
 }
@@ -270,9 +270,30 @@ TEST_F(CliTest, CertPinOnGarbageFileExits1) {
   EXPECT_EQ(run({"cert", "pin", (root_ / "missing.pem").string()}).code, 1);
 }
 
+TEST_F(CliTest, ServeRefusesToStartWhenAnOldWardenVariableIsSet) {
+  const auto r = run({"serve"}, {{"WARDEN_PORT", "9443"},
+                                 {"GUARDIAN_ADMIN_PASSWORD", kTestPassword},
+                                 {"GUARDIAN_DATA_DIR", dataDir()}});
+  EXPECT_EQ(r.code, 2);
+  EXPECT_TRUE(r.out.empty());
+  EXPECT_NE(r.err.find("WARDEN_PORT"), std::string::npos);
+  EXPECT_NE(r.err.find("GUARDIAN_PORT"), std::string::npos);
+  EXPECT_EQ(r.err.find(kTestPassword), std::string::npos);
+  EXPECT_FALSE(fs::exists(dataDir()));  // refused before any storage was touched
+}
+
+TEST_F(CliTest, TokenCommandsRefuseWhenAnOldWardenVariableIsSet) {
+  const auto r = run({"token", "add", "agent-1"}, {{"WARDEN_DATA_DIR", dataDir()}});
+  EXPECT_EQ(r.code, 2);
+  EXPECT_TRUE(r.out.empty());
+  EXPECT_NE(r.err.find("WARDEN_DATA_DIR"), std::string::npos);
+  EXPECT_NE(r.err.find("GUARDIAN_DATA_DIR"), std::string::npos);
+  EXPECT_FALSE(fs::exists(dataDir()));
+}
+
 TEST_F(CliTest, ServeWithInvalidConfigPrintsAllErrorsAndExits1) {
   const auto r = run({"serve", "--config", (root_ / "missing.json").string()},
-                     {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
+                     {{"GUARDIAN_ADMIN_PASSWORD", "short"}, {"GUARDIAN_DATA_DIR", dataDir()}});
   EXPECT_EQ(r.code, 1);
   EXPECT_TRUE(r.out.empty());
   EXPECT_NE(r.err.find("adminPassword"), std::string::npos);
@@ -282,7 +303,7 @@ TEST_F(CliTest, ServeWithInvalidConfigPrintsAllErrorsAndExits1) {
 TEST_F(CliTest, ServeNotesAnExplicitConfigPathThatDoesNotExist) {
   const auto missing = (root_ / "missing.json").string();
   const auto r = run({"serve", "--config", missing},
-                     {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
+                     {{"GUARDIAN_ADMIN_PASSWORD", "short"}, {"GUARDIAN_DATA_DIR", dataDir()}});
   EXPECT_NE(r.err.find("note: config file " + missing + " not found, using environment only\n"),
             std::string::npos);
   EXPECT_TRUE(r.out.empty());
@@ -293,7 +314,7 @@ TEST_F(CliTest, ServeStaysSilentWhenTheDefaultConfigIsMissing) {
   const auto previous = fs::current_path();
   fs::current_path(root_);
   const auto r =
-      run({"serve"}, {{"WARDEN_ADMIN_PASSWORD", "short"}, {"WARDEN_DATA_DIR", dataDir()}});
+      run({"serve"}, {{"GUARDIAN_ADMIN_PASSWORD", "short"}, {"GUARDIAN_DATA_DIR", dataDir()}});
   fs::current_path(previous);
   EXPECT_EQ(r.err.find("not found"), std::string::npos);
   EXPECT_EQ(r.code, 1);
@@ -302,7 +323,7 @@ TEST_F(CliTest, ServeStaysSilentWhenTheDefaultConfigIsMissing) {
 TEST_F(CliTest, ServeErrorsNeverEchoThePassword) {
   const std::string secret = "weakpw-marker-xyz";
   const auto r = run({"serve", "--config", (root_ / "missing.json").string()},
-                     {{"WARDEN_ADMIN_PASSWORD", secret}});
+                     {{"GUARDIAN_ADMIN_PASSWORD", secret}});
   EXPECT_EQ(r.code, 1);
   EXPECT_EQ(r.err.find(secret), std::string::npos);
   EXPECT_EQ(r.out.find(secret), std::string::npos);
@@ -319,8 +340,9 @@ TEST_F(CliTest, ServeWithCorruptPolicyStoreExits1) {
   writeFileAtomic(fs::path(dataDir()) / "policies" / "active", "garbage\n");
   const auto cfg = root_ / "serve.json";
   writeFileAtomic(cfg, R"({"host":"127.0.0.1","port":18443,"allowInsecureHttp":true})");
-  const auto r = run({"serve", "--config", cfg.string()},
-                     {{"WARDEN_ADMIN_PASSWORD", kTestPassword}, {"WARDEN_DATA_DIR", dataDir()}});
+  const auto r =
+      run({"serve", "--config", cfg.string()},
+          {{"GUARDIAN_ADMIN_PASSWORD", kTestPassword}, {"GUARDIAN_DATA_DIR", dataDir()}});
   EXPECT_EQ(r.code, 1);
   EXPECT_NE(r.err.find("error: cannot open storage"), std::string::npos);
   EXPECT_EQ(r.err.find(kTestPassword), std::string::npos);
@@ -338,11 +360,11 @@ TEST_F(CliTest, StopCallableIsASafeNoOpAfterRunCliReturned) {
   std::ostringstream out;
   std::ostringstream err;
   const EnvLookup lookup = [](std::string_view key) -> std::optional<std::string> {
-    if (key == "WARDEN_ADMIN_PASSWORD") {
+    if (key == "GUARDIAN_ADMIN_PASSWORD") {
       return std::string(kTestPassword);
     }
-    if (key == "WARDEN_DATA_DIR") {
-      return (fs::temp_directory_path() / "warden-cli-stop-test").string();
+    if (key == "GUARDIAN_DATA_DIR") {
+      return (fs::temp_directory_path() / "guardian-cli-stop-test").string();
     }
     return std::nullopt;
   };
@@ -352,7 +374,7 @@ TEST_F(CliTest, StopCallableIsASafeNoOpAfterRunCliReturned) {
   captured();  // the server is gone: must be a no-op, not a use-after-free
   captured();
   std::error_code ec;
-  fs::remove_all(fs::temp_directory_path() / "warden-cli-stop-test", ec);
+  fs::remove_all(fs::temp_directory_path() / "guardian-cli-stop-test", ec);
 }
 
 TEST_F(CliTest, ServeStartsAndStopsOnLoopbackPlainHttp) {
@@ -366,8 +388,8 @@ TEST_F(CliTest, ServeStartsAndStopsOnLoopbackPlainHttp) {
   };
   std::ostringstream out;
   std::ostringstream err;
-  const std::map<std::string, std::string> env{{"WARDEN_ADMIN_PASSWORD", kTestPassword},
-                                               {"WARDEN_DATA_DIR", dataDir()}};
+  const std::map<std::string, std::string> env{{"GUARDIAN_ADMIN_PASSWORD", kTestPassword},
+                                               {"GUARDIAN_DATA_DIR", dataDir()}};
   const EnvLookup lookup = [&env](std::string_view key) -> std::optional<std::string> {
     const auto it = env.find(std::string(key));
     return it == env.end() ? std::nullopt : std::optional<std::string>(it->second);
