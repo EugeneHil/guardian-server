@@ -293,7 +293,7 @@ Part 2, the first tag deploy. Only when part 1 passed completely: push the tag `
 
 Use it only when step 8 cannot be made to pass. Where you stop decides how much of it you need:
 
-- Failure in step 2 or 3 (the service was never removed): if `C:\warden` was already moved, run `Move-Item C:\guardian C:\warden` (and the `Rename-Item` of the `-fw-disabled.txt` file from sub-step 3 if you ran it), then `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
+- Failure in step 2 or 3 (the service was never removed): if `C:\warden` was already moved, run `Move-Item C:\guardian C:\warden`; if you had renamed `C:\warden-fw-disabled.txt` to `guardian-fw-disabled.txt`, rename it back (`Rename-Item C:\guardian-fw-disabled.txt warden-fw-disabled.txt`). If the config rewrite of step 3 ran, the config still points at `C:/guardian`: restore `config.local.json` from the backup zip first (rollback sub-step 3: expand the zip to a temp folder and copy that one file to `C:\warden\config.local.json`). Then `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
 - Failure in step 4 or later: do sub-steps 1 to 6 in order. Sub-steps for things you had not yet done (firewall before step 5, secrets before step 6) are harmless no-ops or can be skipped.
 
 It restores the old service exactly: the v0.1.1 binary under `C:\warden` and the `WARDEN_*` environment (the old binary does not read `GUARDIAN_*`).
@@ -308,12 +308,28 @@ icacls.exe C:\guardian /remove 'guardian-deploy' /T /C | Out-Null
 nssm remove GuardianServer confirm
 ```
 
-2. Firewall: add the old rules back, then delete the new ones by `Name` (re-apply the 8443 address restriction if you had one):
+2. Firewall: add the old rules back (the 8443 rule with its address restriction, if it had one), then delete the new ones by `Name`:
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Warden SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
+```
+
+If the old 8443 rule was restricted (the `Remote` value from the step 5 table was not `Any`):
+
+```powershell
 New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow `
-  -RemoteAddress '<Remote value of the old 8443 rule from the step 5 table>'   # omit the line's last argument if it was Any
+  -RemoteAddress '<Remote value of the old 8443 rule from the step 5 table>'
+```
+
+If it was `Any`, use instead:
+
+```powershell
+New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
+```
+
+Then:
+
+```powershell
 Remove-NetFirewallRule -Name 'GuardianSSH', 'GuardianHTTPS'
 ```
 
