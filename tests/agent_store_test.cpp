@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 
+#include "crypto.hpp"
 #include "fs_util.hpp"
 #include "timeutil.hpp"
 
@@ -155,4 +156,28 @@ TEST(AgentStore, FileLivesDirectlyInDataDir) {
   ASSERT_TRUE(store.add("agent-1").has_value());
   EXPECT_TRUE(fs::exists(dir.path() / "agents.json"));
   EXPECT_FALSE(fs::exists(dir.path() / "data"));
+}
+
+// A data directory written before the product rename must keep working after the move, because
+// nothing in the store derives from the name. The old-layout file is spelled out here as a literal
+// in the v0.1.1 on-disk format (not produced by the current writer), so the test fails if the
+// format the store reads ever changes incompatibly.
+TEST(LegacyLayoutTokenStoreTest, TokenIssuedUnderOldDataDirStillAuthenticates) {
+  // Throwaway test value in the real token shape; it authenticates nothing real.
+  const std::string token = "wdn_" + std::string(64, 'a');
+  TempDir dir;
+  const fs::path oldDataDir = dir.path() / "old-data";
+  fs::create_directories(oldDataDir);
+  const std::string legacyFile = R"({"agents":[{"id":"legacy-agent","tokenHash":")" +
+                                 sha256Hex(token) + R"(","createdAt":"2026-10-20T10:00:00Z"}]})";
+  writeFileAtomic(oldDataDir / "agents.json", legacyFile);
+
+  const fs::path newDataDir = dir.path() / "guardian-data";
+  fs::copy(oldDataDir, newDataDir, fs::copy_options::recursive);
+
+  FileAgentStore store(newDataDir, fakeNow());
+  EXPECT_EQ(store.authenticate(token), std::optional<std::string>("legacy-agent"));
+  EXPECT_EQ(store.authenticate("wdn_" + std::string(64, 'b')), std::nullopt);
+  ASSERT_EQ(store.list().size(), 1U);
+  EXPECT_EQ(store.list()[0].id, "legacy-agent");
 }

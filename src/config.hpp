@@ -35,4 +35,9 @@ using EnvLookup = std::function<std::optional<std::string>(std::string_view)>;
 // Never throws; every problem is reported in `errors`.
 ConfigResult loadConfig(std::string_view fileJson, const EnvLookup& env);
 
+// Hard cut after the rename: the environment variables of the former product name are not read.
+// When any of them is set, returns a message naming each one with its replacement (never the
+// values); otherwise nullopt. Callers must refuse to start instead of running on defaults.
+std::optional<std::string> legacyEnvVarProblem(const EnvLookup& env);
+
 }  // namespace guardian::server

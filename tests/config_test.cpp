@@ -57,13 +57,13 @@ TEST(Config, EnvOverridesFile) {
   const auto r =
       loadConfig("{\"host\":\"1.2.3.4\",\"port\":9000,\"dataDir\":\"a\",\"webRoot\":\"b\"," +
                      std::string("\"adminPassword\":\"short\",") + kTls + "}",
-                 envOf({{"WARDEN_HOST", "10.0.0.1"},
-                        {"WARDEN_PORT", "9443"},
-                        {"WARDEN_DATA_DIR", "dd"},
-                        {"WARDEN_WEB_ROOT", "ww"},
-                        {"WARDEN_TLS_CERT", "env-cert"},
-                        {"WARDEN_TLS_KEY", "env-key"},
-                        {"WARDEN_ADMIN_PASSWORD", kPassword}}));
+                 envOf({{"GUARDIAN_HOST", "10.0.0.1"},
+                        {"GUARDIAN_PORT", "9443"},
+                        {"GUARDIAN_DATA_DIR", "dd"},
+                        {"GUARDIAN_WEB_ROOT", "ww"},
+                        {"GUARDIAN_TLS_CERT", "env-cert"},
+                        {"GUARDIAN_TLS_KEY", "env-key"},
+                        {"GUARDIAN_ADMIN_PASSWORD", kPassword}}));
   ASSERT_TRUE(r.config.has_value());
   EXPECT_EQ(r.config->host, "10.0.0.1");
   EXPECT_EQ(r.config->port, 9443);
@@ -76,9 +76,9 @@ TEST(Config, EnvOverridesFile) {
 }
 
 TEST(Config, EnvAloneCanConfigureWithoutFile) {
-  const auto r = loadConfig("", envOf({{"WARDEN_ADMIN_PASSWORD", kPassword},
-                                       {"WARDEN_TLS_CERT", "cert-path"},
-                                       {"WARDEN_TLS_KEY", "key-path"}}));
+  const auto r = loadConfig("", envOf({{"GUARDIAN_ADMIN_PASSWORD", kPassword},
+                                       {"GUARDIAN_TLS_CERT", "cert-path"},
+                                       {"GUARDIAN_TLS_KEY", "key-path"}}));
   EXPECT_TRUE(r.config.has_value());
 }
 
@@ -138,10 +138,10 @@ TEST(Config, RejectsBadPorts) {
   const auto str = loadConfig(pre + "\"8443\"}", envOf({}));
   EXPECT_FALSE(str.config.has_value());
   EXPECT_TRUE(hasError(str, "port: wrong type"));
-  const auto env = loadConfig(pre + "8443}", envOf({{"WARDEN_PORT", "abc"}}));
+  const auto env = loadConfig(pre + "8443}", envOf({{"GUARDIAN_PORT", "abc"}}));
   EXPECT_FALSE(env.config.has_value());
   EXPECT_TRUE(hasError(env, kPortError));
-  const auto big = loadConfig(pre + "8443}", envOf({{"WARDEN_PORT", "99999999999999999999"}}));
+  const auto big = loadConfig(pre + "8443}", envOf({{"GUARDIAN_PORT", "99999999999999999999"}}));
   EXPECT_TRUE(hasError(big, kPortError));
   EXPECT_TRUE(loadConfig(pre + "65535}", envOf({})).config.has_value());
   EXPECT_TRUE(loadConfig(pre + "1}", envOf({})).config.has_value());
@@ -220,5 +220,38 @@ TEST(Config, ExampleConfigParsesButIsNotValid) {
   EXPECT_FALSE(hasError(r, "$: invalid JSON"));
   for (const auto& e : r.errors) {
     EXPECT_EQ(e.find("unknown key"), std::string::npos) << e;
+  }
+}
+
+TEST(Config, LegacyEnvVarProblemIsEmptyWhenNoOldVariableIsSet) {
+  EXPECT_EQ(legacyEnvVarProblem(envOf({{"GUARDIAN_DATA_DIR", "dd"}})), std::nullopt);
+  EXPECT_EQ(legacyEnvVarProblem(envOf({})), std::nullopt);
+}
+
+TEST(Config, LegacyEnvVarProblemNamesTheOldAndTheNewVariable) {
+  const auto problem = legacyEnvVarProblem(envOf({{"WARDEN_DATA_DIR", "dd"}}));
+  ASSERT_TRUE(problem.has_value());
+  EXPECT_NE(problem->find("WARDEN_DATA_DIR"), std::string::npos);
+  EXPECT_NE(problem->find("GUARDIAN_DATA_DIR"), std::string::npos);
+}
+
+TEST(Config, LegacyEnvVarProblemListsEverySetOldVariable) {
+  const auto problem = legacyEnvVarProblem(envOf(
+      {{"WARDEN_PORT", "1"}, {"WARDEN_ADMIN_PASSWORD", kPassword}, {"WARDEN_CONFIG_FILE", "c"}}));
+  ASSERT_TRUE(problem.has_value());
+  for (const char* name : {"PORT", "ADMIN_PASSWORD", "CONFIG_FILE"}) {
+    EXPECT_NE(problem->find(std::string("WARDEN_") + name), std::string::npos) << name;
+    EXPECT_NE(problem->find(std::string("GUARDIAN_") + name), std::string::npos) << name;
+  }
+  EXPECT_EQ(problem->find("WARDEN_HOST"), std::string::npos);
+  EXPECT_EQ(problem->find(kPassword), std::string::npos);  // never echoes values
+}
+
+TEST(Config, LegacyEnvVarProblemCoversAllNineOldNames) {
+  for (const char* name : {"PORT", "HOST", "DATA_DIR", "ADMIN_PASSWORD", "TLS_CERT", "TLS_KEY",
+                           "CONFIG_FILE", "WEB_ROOT", "KEY_FILE"}) {
+    const auto problem = legacyEnvVarProblem(envOf({{std::string("WARDEN_") + name, "x"}}));
+    ASSERT_TRUE(problem.has_value()) << name;
+    EXPECT_NE(problem->find(std::string("GUARDIAN_") + name), std::string::npos) << name;
   }
 }

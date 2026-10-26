@@ -1,6 +1,6 @@
-# Warden server API
+# Guardian server API
 
-This is the wire contract between `warden-server` and its two clients: the macOS agent (Bearer token) and the admin panel (HTTP Basic). It describes what the code does; `scripts/test_docs.py` fails CI when a route or error code appears in `src/*.cpp` but not here. Policy semantics (blocklist, default allow) belong to warden-core; the server never evaluates a request, it only stores, validates and serves policies.
+This is the wire contract between `guardian-server` and its two clients: the macOS agent (Bearer token) and the admin panel (HTTP Basic). It describes what the code does; `scripts/test_docs.py` fails CI when a route or error code appears in `src/*.cpp` but not here. Policy semantics (blocklist, default allow) belong to guardian-core; the server never evaluates a request, it only stores, validates and serves policies.
 
 Base URL: `https://<host>:8443`. Examples use `<vps-ip>`, `wdn_<64 hex>` and `<pin>` as placeholders.
 
@@ -18,8 +18,8 @@ The server certificate is self-signed (ECDSA P-256, SAN = the host). The agent d
 
 Procedure:
 
-1. On the VPS: `warden-server cert generate --host <vps-ip>` writes the certificate and key (default directory `data/tls`) and prints `SPKI pin: <pin>`. It refuses to overwrite existing files.
-2. Later, recompute the pin from the certificate alone with `warden-server cert pin <certFile>` (prints only the pin).
+1. On the VPS: `guardian-server cert generate --host <vps-ip>` writes the certificate and key (default directory `data/tls`) and prints `SPKI pin: <pin>`. It refuses to overwrite existing files.
+2. Later, recompute the pin from the certificate alone with `guardian-server cert pin <certFile>` (prints only the pin).
 3. Give `<pin>` to the agent configuration. The agent must refuse the connection when the presented key hashes to anything else. A renewed certificate has a new key (`cert generate` always creates one), so renewal changes the pin and every agent must be given the new value.
 4. Check by hand: `curl --pinnedpubkey 'sha256//<pin>' -k https://<vps-ip>:8443/healthz` (`-k` only disables CA validation; the pin check still applies).
 
@@ -130,12 +130,12 @@ Returns `{"active":{"version":N,"policy":{...}},"draft":null}`, or with a draft 
 
 ### PUT /api/v1/admin/policy/draft
 
-State-changing admin calls (this one and `POST .../publish`) must carry the request header `X-Warden-Request: 1`, otherwise they fail with `400 bad_request` after authentication. A cross-site form post cannot set a custom header, so this stops CSRF through the browser's cached Basic credentials. The panel sends it automatically.
+State-changing admin calls (this one and `POST .../publish`) must carry the request header `X-Guardian-Request: 1`, otherwise they fail with `400 bad_request` after authentication. A cross-site form post cannot set a custom header, so this stops CSRF through the browser's cached Basic credentials. The panel sends it automatically.
 
-Body is the raw policy text. It is saved even when invalid; the response reports validation (via `warden::parsePolicy`): `200 {"valid":true,"errors":[]}`.
+Body is the raw policy text. It is saved even when invalid; the response reports validation (via `guardian::parsePolicy`): `200 {"valid":true,"errors":[]}`.
 
 ```sh
-curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X PUT -H 'X-Warden-Request: 1' \
+curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X PUT -H 'X-Guardian-Request: 1' \
   --data-binary @policy.json https://<vps-ip>:8443/api/v1/admin/policy/draft
 ```
 
@@ -144,7 +144,7 @@ Drafts carry `"version": 0` by convention; an omitted `version` is accepted and 
 ### POST /api/v1/admin/policy/publish
 
 ```sh
-curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X POST -H 'X-Warden-Request: 1' \
+curl --pinnedpubkey 'sha256//<pin>' -k -u admin -X POST -H 'X-Guardian-Request: 1' \
   https://<vps-ip>:8443/api/v1/admin/policy/publish
 # 200 {"version":4}
 ```
@@ -176,8 +176,8 @@ Returns `{"events":[{"ts","process":{"path","signingId","teamId"},"responsible":
 | 200 | | all routes | success |
 | 304 | | `GET /api/v1/policy` | active version matches `If-None-Match`; no body |
 | 400 | `invalid_events` | `POST /api/v1/events` | any item or the body is invalid; `errors` lists them |
-| 400 | `bad_request` | `GET /api/v1/admin/events`; `PUT .../draft` and `POST .../publish` without `X-Warden-Request: 1`; malformed requests rejected by the HTTP layer | bad `limit`, bad request line or unknown method |
-| 401 | `unauthorized` | agent and admin routes | missing, malformed, wrong or revoked credentials; `WWW-Authenticate: Bearer` (agent) or `Basic realm="Warden", charset="UTF-8"` (admin) |
+| 400 | `bad_request` | `GET /api/v1/admin/events`; `PUT .../draft` and `POST .../publish` without `X-Guardian-Request: 1`; malformed requests rejected by the HTTP layer | bad `limit`, bad request line or unknown method |
+| 401 | `unauthorized` | agent and admin routes | missing, malformed, wrong or revoked credentials; `WWW-Authenticate: Bearer` (agent) or `Basic realm="Guardian", charset="UTF-8"` (admin) |
 | 404 | `not_found` | any unknown path, a missing static file | no such resource |
 | 405 | `method_not_allowed` | known path, wrong method (including HEAD, OPTIONS, PATCH, DELETE) | `Allow` header lists the supported methods |
 | 409 | `no_draft` | `POST /api/v1/admin/policy/publish` | nothing to publish |
