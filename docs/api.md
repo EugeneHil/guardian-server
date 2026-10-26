@@ -51,7 +51,7 @@ No authentication.
 
 ```sh
 curl --pinnedpubkey 'sha256//<pin>' -k https://<vps-ip>:8443/healthz
-# 200 {"status":"ok","version":"0.1.0"}
+# 200 {"status":"ok","version":"0.2.0"}
 ```
 
 ### GET /api/v1/policy
