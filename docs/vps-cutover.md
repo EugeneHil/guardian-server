@@ -17,9 +17,9 @@ Ground rules, learned from the live install:
 - Never paste or store a password, private key or token (not in this file, not in chat, not in a file in the repository). Passwords come from your password manager, tokens from the agent Settings or the password manager; the commands below read them without echo or never touch them.
 - Firewall rules are matched on `Name`, never on `DisplayName` (localized Windows).
 - `Start-Service` takes about 15 seconds: wait before you probe.
-- The scripts in `C:\guardian\scripts` never update themselves; you copy them by hand (step 7).
+- The scripts in `C:\guardian\scripts` never update themselves; you copy them by hand (step 3).
 - Hard cut: the new server refuses to start (exit 2) while any `WARDEN_*` variable is set in its environment, and the old binary does not read `GUARDIAN_*`. The two cannot be mixed, which is why step 4 checks the service environment and step 9 restores the old service completely.
-- Every command whose output you paste prints variable NAMES only, never values: environment values may hold the admin password. Do not run a raw `nssm get ... AppEnvironment...`; use the helper below, which reads the registry (the piped output of NSSM 2.24 can be UTF-16 and cannot be parsed reliably).
+- Every command whose output you paste prints NAMES and verdicts only, never values (no pin, no IP address, no password): environment values may hold the admin password. Do not run a raw `nssm get ... AppEnvironment...`; use the helper below, which reads the registry (the piped output of NSSM 2.24 can be UTF-16 and cannot be parsed reliably).
 - Do not reboot the VPS between steps 4 and 8: the new service is registered for automatic start before it is ready.
 
 In every PowerShell session below (also after a reconnect, and at the start of step 9), first run:
@@ -46,7 +46,7 @@ function Show-SvcEnvNames([string]$Svc) {   # names only, safe to paste
 scp guardian-server-<sha>.zip <owner-user>@<vps-ip>:C:/warden/incoming/
 ```
 
-3. From the Mac, the pinned health check of the old install answers 200 (`<pin>` is the SPKI pin from the agent Settings; `cert pin` on the VPS prints the same value):
+3. From the Mac, the pinned health check of the old install answers 200 (`<pin>` is the SPKI pin from the agent Settings; it is never pasted anywhere, and only the status code is):
 
 ```sh
 curl --pinnedpubkey 'sha256//<pin>' -k -sS -o /dev/null -w '%{http_code}\n' https://<vps-ip>:8443/healthz     # 200
@@ -61,7 +61,10 @@ nssm get WardenServer Application                         # C:\warden\bin\warden
 Show-SvcEnvNames WardenServer                             # names only; normally both lists are empty
 [Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'WARDEN_*' }   # machine-wide variables (names only)
 Get-PSDrive C | Select-Object Free
+$oldPin = & C:\warden\bin\warden-server.exe cert pin C:\warden\data\tls\server.crt   # stored for step 7, not printed
 ```
+
+Keep this PowerShell session open until step 7 (the pin stays in `$oldPin`). If you have to reconnect, run `$oldPin = Read-Host 'pin'` and type the pin from the agent Settings; do not paste it into the chat.
 
 5. Make an admin-only backup folder (the backup holds the private key and the config, so it is never copied anywhere):
 
@@ -114,6 +117,16 @@ $c.tls.certPath, $c.tls.keyPath, $c.dataDir, $c.webRoot   # all four start with 
 Remove-Variable c
 ```
 
+Scripts never update themselves, so copy the new ones and install the build uploaded in step 1 now, before the service is registered (bootstrap mode: no service control, no health check). From a checkout of the merged `main` on the Mac:
+
+```sh
+scp scripts/install-service.ps1 scripts/apply-update.ps1 <owner-user>@<vps-ip>:C:/guardian/scripts/
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\apply-update.ps1 -Zip C:\guardian\incoming\guardian-server-<sha>.zip -Bootstrap
+```
+
 ## Step 4. Replace the service, set `GUARDIAN_*`, leave no `WARDEN_*`
 
 Take the old environment from the registry (the lists stay in this session only; values are never printed or written to a file), then remove the old service and strip its accounts from the ACLs while they still resolve (`warden-deploy` stays as a user until step 10):
@@ -126,7 +139,7 @@ icacls.exe C:\guardian /remove 'warden-deploy' /T /C | Out-Null
 nssm remove WardenServer confirm
 ```
 
-Register the new service with the new binary path (the binary arrives in step 7; `install-service.ps1` finishes the configuration there). Carry the old lists over under the new prefix, written straight to the registry as multi-strings:
+Register the new service with the new binary path (the binary is already there from step 3; `install-service.ps1` finishes the configuration in step 7). Carry the old lists over under the new prefix, written straight to the registry as multi-strings:
 
 ```powershell
 nssm install GuardianServer C:\guardian\bin\guardian-server.exe
@@ -163,12 +176,18 @@ Get-NetFirewallRule -Direction Inbound -Action Allow | ForEach-Object {
     Name    = $_.Name
     Enabled = $_.Enabled
     Port    = "$(($_ | Get-NetFirewallPortFilter).LocalPort)"
-    Remote  = "$(($_ | Get-NetFirewallAddressFilter).RemoteAddress)"
+    Remote  = if (@('Any', '*') -contains "$(($_ | Get-NetFirewallAddressFilter).RemoteAddress)") { 'Any' } else { 'restricted' }
   }
 } | Where-Object { $_.Port -in '22', '8443' -and $_.Name -notlike '*OpenSSH*' } | Format-Table -AutoSize
 ```
 
-Paste the table and write down the `Remote` value of the old 8443 rule: the rollback needs it. Add the new rules (explicit `-Name`), reusing the `Remote` restriction of the old 8443 rule if it had one, and only then remove the old ones with the `Name` values from the table:
+Paste the table (it shows `Any` or `restricted`, never an address). If the old 8443 rule is `restricted`, read its real addresses on screen only, do NOT paste them, and write them down because the rollback needs them (use its `Name` from the table):
+
+```powershell
+(Get-NetFirewallRule -Name '<Name of the old HTTPS rule from the table>' | Get-NetFirewallAddressFilter).RemoteAddress
+```
+
+Add the new rules (explicit `-Name`), reusing the `Remote` restriction of the old 8443 rule if it had one, and only then remove the old ones with the `Name` values from the table:
 
 ```powershell
 New-NetFirewallRule -Name 'GuardianSSH' -DisplayName 'Guardian SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
@@ -238,25 +257,20 @@ gh secret list --env production --repo <owner>/guardian-server      # VPS_HOST, 
 
 Leave the old key `~/.ssh/warden-deploy` and the user `warden-deploy` in place until step 10: only they make a rollback possible.
 
-## Step 7. Copy the new scripts, install the binary, finish the service
+## Step 7. Finish the service
 
-Scripts never update themselves. From a checkout of the merged `main` on the Mac:
-
-```sh
-scp scripts/install-service.ps1 scripts/apply-update.ps1 <owner-user>@<vps-ip>:C:/guardian/scripts/
-```
-
-Install the build uploaded in step 1 (this is the bootstrap mode: no service control, no health check), then let `install-service.ps1` configure the service, the service account `NT SERVICE\GuardianServer`, the deploy user's right to start and stop it, and every ACL. It does not start the service because of `-NoStart`, and it does not touch the environment set in step 4:
+The binary was installed in step 3. Check it and the certificate, then let `install-service.ps1` configure the service, the service account `NT SERVICE\GuardianServer`, the deploy user's right to start and stop it, and every ACL. It does not start the service because of `-NoStart`, and it does not touch the environment set in step 4. The pin check prints a verdict only:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\apply-update.ps1 -Zip C:\guardian\incoming\guardian-server-<sha>.zip -Bootstrap
 C:\guardian\bin\guardian-server.exe version                   # 0.2.0 (the release build after the version bump PR)
-C:\guardian\bin\guardian-server.exe cert pin C:\guardian\data\tls\server.crt          # the same pin as before the cutover
+$newPin = & C:\guardian\bin\guardian-server.exe cert pin C:\guardian\data\tls\server.crt
+if ($newPin -eq $oldPin) { 'pin unchanged' } else { 'PIN CHANGED' }
+Remove-Variable oldPin, newPin
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\install-service.ps1 -Nssm 'C:\Program Files\nssm\nssm.exe' -NoStart
 Show-SvcEnvNames GuardianServer                           # run the step 4 check again
 ```
 
-The version is the one the release was built with. If it prints 0.1.0 the bump PR was not part of the release: that is harmless for the cutover (the live install reports 0.1.1, but this is the renamed code line, not a downgrade), but then the tag in step 8 must wait for the bump. If the `cert pin` value differs from the pin you recorded, stop: the certificate was not moved intact.
+The version is the one the release was built with. If it prints 0.1.0 the bump PR was not part of the release: that is harmless for the cutover (the live install reports 0.1.1, but this is the renamed code line, not a downgrade), but then the tag in step 8 must wait for the bump. If it prints `PIN CHANGED`, stop: the certificate was not moved intact.
 
 ## Step 8. Start, verify, then release
 
@@ -266,7 +280,7 @@ Part 1, the cutover build:
 Start-Service GuardianServer
 Start-Sleep -Seconds 15                                   # the start takes about 15 s
 Get-Service GuardianServer                                # Running
-Get-Content C:\guardian\logs\guardian-server.err.log -Tail 20
+Get-Content C:\guardian\logs\guardian-server.err.log -Tail 200 | Where-Object { $_ -notmatch '^\S+ [A-Z]+ ' } | Select-Object -Last 20   # no access lines (client addresses)
 ```
 
 From the Mac:
@@ -302,7 +316,7 @@ Use it only when step 8 cannot be made to pass. Where you stop decides how much 
   Remove-Item $tmp -Recurse -Force
   ```
 
-  Finally `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
+  If the step 3 install of the new binary had already run, first restore `bin`, `web` and `scripts` from the backup exactly as in sub-step 3 below (after the `Move-Item`, skip its `Move-Item`). Finally `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
 - Failure in step 4 or later: do sub-steps 1 to 6 in order. Sub-steps for things you had not yet done (firewall before step 5, secrets before step 6) are harmless no-ops or can be skipped.
 
 It restores the old service exactly: the v0.1.1 binary under `C:\warden` and the `WARDEN_*` environment (the old binary does not read `GUARDIAN_*`).
@@ -317,20 +331,22 @@ icacls.exe C:\guardian /remove 'guardian-deploy' /T /C | Out-Null
 nssm remove GuardianServer confirm
 ```
 
-2. Firewall: add the old rules back (the 8443 rule with its address restriction, if it had one), then delete the new ones by `Name`:
+2. Firewall: add the old rules back (the SSH rule only if step 5 found one, the 8443 rule with its address restriction if it had one), then delete the new ones by `Name`.
+
+If step 5 found an old SSH rule (not only the built-in OpenSSH one):
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Warden SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
 ```
 
-If the old 8443 rule was restricted (the `Remote` value from the step 5 table was not `Any`):
+Always add the 8443 rule. If the old one was restricted (`Remote` was `restricted` in the step 5 table):
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow `
-  -RemoteAddress '<Remote value of the old 8443 rule from the step 5 table>'
+  -RemoteAddress '<addresses of the old 8443 rule you wrote down in step 5>'
 ```
 
-If it was `Any`, use instead:
+If it was `Any`, use:
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
