@@ -5,7 +5,7 @@
 #include <exception>
 #include <nlohmann/json.hpp>
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -206,4 +206,4 @@ ConfigResult loadConfig(std::string_view fileJson, const EnvLookup& env) {
   }
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

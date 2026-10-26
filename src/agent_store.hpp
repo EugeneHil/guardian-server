@@ -9,7 +9,7 @@
 
 #include "timeutil.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 // [A-Za-z0-9._-]{1,64}
 bool isValidAgentId(std::string_view id) noexcept;
@@ -59,4 +59,4 @@ class FileAgentStore final : public AgentStore {
   mutable std::mutex mutex_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

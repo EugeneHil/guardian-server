@@ -1,12 +1,12 @@
 #include <cctype>
+#include <guardian/policy_parser.hpp>
 #include <string>
 #include <system_error>
-#include <warden/policy_parser.hpp>
 
 #include "fs_util.hpp"
 #include "policy_store.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 constexpr const char* kBootstrapPolicy = R"({"schemaVersion":1,"version":1,"rules":[]})";
@@ -62,7 +62,7 @@ FilePolicyStore::FilePolicyStore(const std::filesystem::path& dataDir)
     throw StorageError("missing policy file: " + versionFile(version).string());
   }
   // Fail closed: a crash can leave the pointer naming an empty or partial file.
-  const warden::ParseResult parsed = warden::parsePolicy(*json);
+  const guardian::ParseResult parsed = guardian::parsePolicy(*json);
   if (!parsed.policy.has_value() || parsed.policy->version != version) {
     throw StorageError("active policy file is invalid or does not match its pointer: " +
                        versionFile(version).string());
@@ -130,4 +130,4 @@ void FilePolicyStore::commit(const PolicyDoc& doc) {
   active_ = doc;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

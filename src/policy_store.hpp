@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace warden::server {
+namespace guardian::server {
 
 struct PolicyDoc {
   std::int64_t version = 0;
@@ -52,4 +52,4 @@ class FilePolicyStore final : public PolicyStore {
   mutable std::mutex mutex_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

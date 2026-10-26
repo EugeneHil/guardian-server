@@ -14,7 +14,7 @@
 #include "event_store.hpp"
 #include "policy_service.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 struct HttpRequest {
   std::string method;
@@ -90,4 +90,4 @@ class Api {
   RouteTable routes_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

@@ -10,14 +10,14 @@
 #include "fs_util.hpp"
 #include "timeutil.hpp"
 
-using namespace warden::server;
+using namespace guardian::server;
 namespace fs = std::filesystem;
 
 namespace {
 class TempDir {
  public:
   TempDir() {
-    path_ = fs::temp_directory_path() / ("warden_agent_test_" + std::to_string(counter_++) + "_" +
+    path_ = fs::temp_directory_path() / ("guardian_agent_test_" + std::to_string(counter_++) + "_" +
                                          std::to_string(reinterpret_cast<std::uintptr_t>(this)));
     fs::create_directories(path_);
   }

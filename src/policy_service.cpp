@@ -7,7 +7,7 @@
 
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 constexpr std::size_t kMaxPolicyBytes = 1048576;  // 1 MiB
@@ -15,15 +15,15 @@ constexpr std::size_t kMaxPolicyBytes = 1048576;  // 1 MiB
 // The published version is always assigned by the server, so a draft that omits "version"
 // is acceptable; every other error is reported as is. Parser messages for malformed JSON carry
 // nlohmann text (byte offsets, token text), so they are replaced by a fixed message.
-std::vector<warden::ValidationError> validate(std::string_view text) {
-  std::vector<warden::ValidationError> errors = warden::parsePolicy(text).errors;
-  // Coupled to warden-core's literal {"version", "missing"} error.
+std::vector<guardian::ValidationError> validate(std::string_view text) {
+  std::vector<guardian::ValidationError> errors = guardian::parsePolicy(text).errors;
+  // Coupled to guardian-core's literal {"version", "missing"} error.
   errors.erase(std::remove_if(errors.begin(), errors.end(),
-                              [](const warden::ValidationError& e) {
+                              [](const guardian::ValidationError& e) {
                                 return e.path == "version" && e.message == "missing";
                               }),
                errors.end());
-  for (warden::ValidationError& error : errors) {
+  for (guardian::ValidationError& error : errors) {
     if (error.path == "$" && error.message.rfind("invalid JSON", 0) == 0) {
       error.message = "invalid JSON";
     }
@@ -31,7 +31,7 @@ std::vector<warden::ValidationError> validate(std::string_view text) {
   return errors;
 }
 
-ValidationReport report(std::vector<warden::ValidationError> errors) {
+ValidationReport report(std::vector<guardian::ValidationError> errors) {
   ValidationReport out;
   out.valid = errors.empty();
   out.errors = std::move(errors);
@@ -71,7 +71,7 @@ PublishResult PolicyService::publish() {
     result.failure = PublishResult::Failure::NoDraft;
     return result;
   }
-  std::vector<warden::ValidationError> errors = validate(*text);
+  std::vector<guardian::ValidationError> errors = validate(*text);
   if (!errors.empty()) {
     result.failure = PublishResult::Failure::Invalid;
     result.errors = std::move(errors);
@@ -86,7 +86,7 @@ PublishResult PolicyService::publish() {
   doc["version"] = next;
   std::string json = doc.dump(2) + "\n";
 
-  const warden::ParseResult reparsed = warden::parsePolicy(json);
+  const guardian::ParseResult reparsed = guardian::parsePolicy(json);
   if (!reparsed.policy.has_value() || reparsed.policy->version != next) {
     throw StorageError("published policy failed re-validation");
   }
@@ -98,4 +98,4 @@ PublishResult PolicyService::publish() {
   return result;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

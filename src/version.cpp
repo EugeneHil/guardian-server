@@ -1,7 +1,7 @@
 #include "version.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
-std::string_view serverVersion() noexcept { return WARDEN_SERVER_VERSION; }
+std::string_view serverVersion() noexcept { return GUARDIAN_SERVER_VERSION; }
 
-}  // namespace warden::server
+}  // namespace guardian::server

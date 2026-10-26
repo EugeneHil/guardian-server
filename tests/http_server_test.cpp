@@ -20,7 +20,7 @@
 #include "crypto.hpp"
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 namespace {
 
 using testing::ApiFixture;
@@ -508,4 +508,4 @@ TEST_F(HttpServerTest, QueryStringDoesNotChangeRouting) {
 }
 
 }  // namespace
-}  // namespace warden::server
+}  // namespace guardian::server

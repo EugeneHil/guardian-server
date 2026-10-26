@@ -10,7 +10,7 @@
 #include "event.hpp"
 #include "timeutil.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 class EventStore {
  public:
@@ -49,4 +49,4 @@ class FileEventStore final : public EventStore {
   mutable std::mutex mutex_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

@@ -4,7 +4,7 @@
 
 #include <string>
 
-using namespace warden::server;
+using namespace guardian::server;
 
 namespace {
 std::string item(const std::string& extra = "") {

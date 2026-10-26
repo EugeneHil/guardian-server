@@ -4,7 +4,7 @@
 
 #include "crypto.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -135,4 +135,4 @@ void AuthThrottle::recordSuccess(const std::string& key) {
   entries_.erase(it);
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

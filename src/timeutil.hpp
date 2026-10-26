@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace warden::server {
+namespace guardian::server {
 
 using TimePoint = std::chrono::system_clock::time_point;
 using NowFn = std::function<TimePoint()>;
@@ -18,4 +18,4 @@ std::string formatUtc(TimePoint tp);
 // the range TimePoint can represent on this platform.
 std::optional<TimePoint> parseUtc(std::string_view text);
 
-}  // namespace warden::server
+}  // namespace guardian::server

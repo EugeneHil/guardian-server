@@ -15,7 +15,7 @@ namespace httplib {
 class Server;
 }
 
-namespace warden::server {
+namespace guardian::server {
 
 struct ServerOptions {
   std::string host = "127.0.0.1";
@@ -67,4 +67,4 @@ class HttpServer {
   std::condition_variable runDone_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

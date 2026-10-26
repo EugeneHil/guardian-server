@@ -24,7 +24,7 @@
 #include "policy_store.hpp"
 #include "version.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -430,4 +430,4 @@ int runCli(const std::vector<std::string>& args, std::ostream& out, std::ostream
   }
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

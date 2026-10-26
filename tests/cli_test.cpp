@@ -16,7 +16,7 @@
 #include "crypto.hpp"
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 namespace {
 
 namespace fs = std::filesystem;
@@ -382,4 +382,4 @@ TEST_F(CliTest, ServeStartsAndStopsOnLoopbackPlainHttp) {
 }
 
 }  // namespace
-}  // namespace warden::server
+}  // namespace guardian::server

@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace warden::server {
+namespace guardian::server {
 
 struct TlsConfig {
   std::string certPath;
@@ -35,4 +35,4 @@ using EnvLookup = std::function<std::optional<std::string>(std::string_view)>;
 // Never throws; every problem is reported in `errors`.
 ConfigResult loadConfig(std::string_view fileJson, const EnvLookup& env);
 
-}  // namespace warden::server
+}  // namespace guardian::server

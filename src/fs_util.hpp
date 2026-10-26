@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace warden::server {
+namespace guardian::server {
 
 class StorageError : public std::runtime_error {
  public:
@@ -22,4 +22,4 @@ void writeFileAtomic(const std::filesystem::path& path, std::string_view content
 // Whole-file read; nullopt if the file does not exist or cannot be read.
 std::optional<std::string> readFile(const std::filesystem::path& path);
 
-}  // namespace warden::server
+}  // namespace guardian::server

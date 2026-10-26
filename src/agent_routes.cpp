@@ -6,7 +6,7 @@
 #include "event.hpp"
 #include "version.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -112,4 +112,4 @@ void registerAgentRoutes(RouteTable& table) {
   table.add("POST", "/api/v1/events", postEvents);
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server
