@@ -293,7 +293,16 @@ Part 2, the first tag deploy. Only when part 1 passed completely: push the tag `
 
 Use it only when step 8 cannot be made to pass. Where you stop decides how much of it you need:
 
-- Failure in step 2 or 3 (the service was never removed): if `C:\warden` was already moved, run `Move-Item C:\guardian C:\warden`; if you had renamed `C:\warden-fw-disabled.txt` to `guardian-fw-disabled.txt`, rename it back (`Rename-Item C:\guardian-fw-disabled.txt warden-fw-disabled.txt`). If the config rewrite of step 3 ran, the config still points at `C:/guardian`: restore `config.local.json` from the backup zip first (rollback sub-step 3: expand the zip to a temp folder and copy that one file to `C:\warden\config.local.json`). Then `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
+- Failure in step 2 or 3 (the service was never removed): if `C:\warden` was already moved, run `Move-Item C:\guardian C:\warden`; if you had renamed `C:\warden-fw-disabled.txt` to `guardian-fw-disabled.txt`, rename it back (`Rename-Item C:\guardian-fw-disabled.txt warden-fw-disabled.txt`). Then restore the old config unconditionally (the step 3 rewrite may have changed its paths to `C:/guardian`; skip this only if the step 2 guard stopped you, because then there is no backup and step 3 never ran):
+
+  ```powershell
+  $tmp = 'C:\cutover-backup\restore'
+  Expand-Archive C:\cutover-backup\warden-pre-cutover.zip -DestinationPath $tmp -Force
+  Copy-Item "$tmp\config.local.json" C:\warden\config.local.json -Force
+  Remove-Item $tmp -Recurse -Force
+  ```
+
+  Finally `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
 - Failure in step 4 or later: do sub-steps 1 to 6 in order. Sub-steps for things you had not yet done (firewall before step 5, secrets before step 6) are harmless no-ops or can be skipped.
 
 It restores the old service exactly: the v0.1.1 binary under `C:\warden` and the `WARDEN_*` environment (the old binary does not read `GUARDIAN_*`).
