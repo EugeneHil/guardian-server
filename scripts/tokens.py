@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate web/tokens.css from the warden-core design tokens.
+"""Generate web/tokens.css from the guardian-core design tokens.
 
 Usage: python3 -I -B scripts/tokens.py [--check]
 
 Without arguments, regenerates web/tokens.css. With --check, generates into a temporary
-directory and exits 1 when web/tokens.css is missing or differs. warden-core's generator also
+directory and exits 1 when web/tokens.css is missing or differs. guardian-core's generator also
 writes a Swift file; it is sent to a temporary directory so the submodule stays clean.
 """
 import argparse
@@ -14,7 +14,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GENERATOR = os.path.join(ROOT, "external", "warden-core", "design-tokens", "generate.py")
+GENERATOR = os.path.join(ROOT, "external", "guardian-core", "design-tokens", "generate.py")
 CSS_PATH = os.path.join(ROOT, "web", "tokens.css")
 
 

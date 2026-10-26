@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-  Registers (or re-configures) the WardenServer Windows service through NSSM and sets the ACLs.
+  Registers (or re-configures) the GuardianServer Windows service through NSSM and sets the ACLs.
 
 .DESCRIPTION
   Run once from an elevated PowerShell after docs/vps-setup.md steps 1-6, and again after any change
   to this script. It is idempotent: an existing service is edited, never duplicated.
 
-  Service account: the virtual account "NT SERVICE\WardenServer". It needs no password, exists only
+  Service account: the virtual account "NT SERVICE\GuardianServer". It needs no password, exists only
   for this service, and cannot log on interactively, so there is nothing to store or rotate.
   (-ServiceAccount 'NT AUTHORITY\LocalService' is the fallback if a host rejects virtual accounts.)
 
@@ -28,10 +28,10 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Root = 'C:\warden',
-  [string]$ServiceName = 'WardenServer',
-  [string]$ServiceAccount = 'NT SERVICE\WardenServer',
-  [string]$DeployUser = 'warden-deploy',
+  [string]$Root = 'C:\guardian',
+  [string]$ServiceName = 'GuardianServer',
+  [string]$ServiceAccount = 'NT SERVICE\GuardianServer',
+  [string]$DeployUser = 'guardian-deploy',
   [string]$Nssm = 'nssm.exe',
   [switch]$NoStart
 )
@@ -79,7 +79,7 @@ foreach ($rule in (Get-Acl -LiteralPath $nssmDir).Access) {
   }
 }
 
-$exe = Join-Path $Root 'bin\warden-server.exe'
+$exe = Join-Path $Root 'bin\guardian-server.exe'
 # The file names are assembled so that this script does not spell out secret-looking file names.
 $configFile = Join-Path $Root ('config.local' + '.json')
 $dataDir = Join-Path $Root 'data'
@@ -128,12 +128,12 @@ if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
 Invoke-NssmSet 'Application' @($exe)
 Invoke-NssmSet 'AppParameters' @("serve --config $configFile")
 Invoke-NssmSet 'AppDirectory' @($Root)
-Invoke-NssmSet 'DisplayName' @('Warden Server')
-Invoke-NssmSet 'Description' @('Warden endpoint DLP policy and event server')
+Invoke-NssmSet 'DisplayName' @('Guardian Server')
+Invoke-NssmSet 'Description' @('Guardian endpoint DLP policy and event server')
 Invoke-NssmSet 'Start' @('SERVICE_AUTO_START')
 # Logs: stdout and stderr, rotated online every 10 MiB or 24 hours, old files kept by NSSM.
-Invoke-NssmSet 'AppStdout' @((Join-Path $logsDir 'warden-server.out.log'))
-Invoke-NssmSet 'AppStderr' @((Join-Path $logsDir 'warden-server.err.log'))
+Invoke-NssmSet 'AppStdout' @((Join-Path $logsDir 'guardian-server.out.log'))
+Invoke-NssmSet 'AppStderr' @((Join-Path $logsDir 'guardian-server.err.log'))
 Invoke-NssmSet 'AppRotateFiles' @('1')
 Invoke-NssmSet 'AppRotateOnline' @('1')
 Invoke-NssmSet 'AppRotateBytes' @('10485760')

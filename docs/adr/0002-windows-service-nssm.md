@@ -1,5 +1,7 @@
 # ADR 0002: Windows service host (NSSM)
 
+> Formerly Warden.
+
 ## Status
 
 Accepted (2026-10-21).
@@ -7,7 +9,7 @@ Accepted (2026-10-21).
 ## Context
 
 The server runs unattended on a Windows VPS (design spec section 8). It must
-start at boot, restart after a crash and keep its logs bounded. `warden-server
+start at boot, restart after a crash and keep its logs bounded. `guardian-server
 serve` is an ordinary console program that stops cleanly on SIGINT/SIGTERM and
 writes its access log to stderr.
 
@@ -16,7 +18,7 @@ sources stay portable and the macOS development build covers the same code.
 
 ## Decision
 
-Run `warden-server serve` as a Windows service hosted by NSSM (the Non-Sucking
+Run `guardian-server serve` as a Windows service hosted by NSSM (the Non-Sucking
 Service Manager), installed and configured by the deployment steps in
 `docs/vps-setup.md`.
 

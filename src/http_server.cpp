@@ -7,7 +7,7 @@
 #include <exception>
 #include <utility>
 
-namespace warden::server {
+namespace guardian::server {
 namespace {
 
 // Socket-level limits. Namespace scope so they are usable from lambdas on every compiler.
@@ -336,4 +336,4 @@ void HttpServer::stop() {
   runDone_.wait(lock, [this] { return !runActive_; });
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

@@ -71,7 +71,7 @@ class PanelStaticTest(unittest.TestCase):
 
     def test_app_js_marks_state_changing_requests(self):
         source = read("app.js")
-        self.assertRegex(source, r'headers\["X-Warden-Request"\]\s*=\s*"1"')
+        self.assertRegex(source, r'headers\["X-Guardian-Request"\]\s*=\s*"1"')
         self.assertIn('method !== "GET"', source)
 
     def test_app_js_is_a_classic_script(self):

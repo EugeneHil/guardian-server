@@ -273,7 +273,7 @@ def main() -> int:
     except Exception as exc:  # fail closed
         reason = f"guard error: {exc}"
     if reason:
-        print(f"Blocked by warden guard: {reason}", file=sys.stderr)
+        print(f"Blocked by guardian guard: {reason}", file=sys.stderr)
         return 2
     return 0
 

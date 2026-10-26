@@ -10,10 +10,10 @@
 #include <thread>
 #include <vector>
 
+#include "guardian/policy_parser.hpp"
 #include "policy_store.hpp"
-#include "warden/policy_parser.hpp"
 
-using namespace warden::server;
+using namespace guardian::server;
 namespace fs = std::filesystem;
 
 namespace {
@@ -21,8 +21,8 @@ class TempDir {
  public:
   TempDir() {
     path_ =
-        fs::temp_directory_path() / ("warden_policy_svc_test_" + std::to_string(counter_++) + "_" +
-                                     std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+        fs::temp_directory_path() / ("guardian_policy_svc_test_" + std::to_string(counter_++) +
+                                     "_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
     fs::create_directories(path_);
   }
   TempDir(const TempDir&) = delete;
@@ -46,7 +46,7 @@ std::string draftJson(const std::string& versionField = R"("version":5,)") {
 std::vector<std::string> described(const ValidationReport& report) {
   std::vector<std::string> out;
   for (const auto& error : report.errors) {
-    out.push_back(warden::describe(error));
+    out.push_back(guardian::describe(error));
   }
   return out;
 }
@@ -148,7 +148,7 @@ TEST(PolicyService, PublishedJsonRoundTripsThroughParsePolicy) {
   f.service.saveDraft(draftJson());
   const PublishResult result = f.service.publish();
   ASSERT_TRUE(result.published.has_value());
-  const warden::ParseResult parsed = warden::parsePolicy(result.published->json);
+  const guardian::ParseResult parsed = guardian::parsePolicy(result.published->json);
   ASSERT_TRUE(parsed.ok());
   EXPECT_EQ(parsed.policy->version, 2);
   EXPECT_EQ(result.published->json.back(), '\n');

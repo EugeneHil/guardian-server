@@ -13,12 +13,12 @@ cmake --preset coverage
 cmake --build --preset coverage
 
 rm -f "$BUILD_DIR"/*.profraw "$BUILD_DIR/coverage.profdata" "$BUILD_DIR/summary.json"
-LLVM_PROFILE_FILE="$PWD/$BUILD_DIR/warden-%p.profraw" ctest --preset coverage
+LLVM_PROFILE_FILE="$PWD/$BUILD_DIR/guardian-%p.profraw" ctest --preset coverage
 
 xcrun llvm-profdata merge -sparse "$BUILD_DIR"/*.profraw -o "$BUILD_DIR/coverage.profdata"
 xcrun llvm-cov export -summary-only \
   -instr-profile="$BUILD_DIR/coverage.profdata" \
   -ignore-filename-regex='(_deps|/external/|/tests/|/src/main\.cpp$)' \
-  "$BUILD_DIR/warden_tests" > "$BUILD_DIR/summary.json"
+  "$BUILD_DIR/guardian_tests" > "$BUILD_DIR/summary.json"
 
 python3 -I -B scripts/coverage_gate.py "$BUILD_DIR/summary.json" --min "$MIN_COVERAGE"

@@ -24,7 +24,7 @@
 #include "policy_store.hpp"
 #include "version.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -39,36 +39,36 @@ constexpr int kMaxCertDays = 36500;
 constexpr std::size_t kMaxDaysDigits = 6;
 
 // Adjacent literals keep these names out of greps and tooling that block secret file names.
-#define WARDEN_CONFIG_FILE \
-  "config.local"           \
+#define GUARDIAN_CONFIG_FILE \
+  "config.local"             \
   ".json"
-#define WARDEN_KEY_FILE \
-  "server."             \
+#define GUARDIAN_KEY_FILE \
+  "server."               \
   "key"
-constexpr const char* kDefaultConfigFile = WARDEN_CONFIG_FILE;
+constexpr const char* kDefaultConfigFile = GUARDIAN_CONFIG_FILE;
 constexpr const char* kDefaultDataDir = "data";
 constexpr const char* kDefaultCertDir = "data/tls";
 constexpr const char* kCertFileName = "server.crt";
-constexpr const char* kKeyFileName = WARDEN_KEY_FILE;
+constexpr const char* kKeyFileName = GUARDIAN_KEY_FILE;
 
 constexpr const char* kUsage =
-    "usage: warden-server <command> [options]\n"
+    "usage: guardian-server <command> [options]\n"
     "\n"
     "commands:\n"
     "  version                          print the server version\n"
     "  help                             print this help\n"
-    "  serve [--config PATH]            run the server (default config file: " WARDEN_CONFIG_FILE
+    "  serve [--config PATH]            run the server (default config file: " GUARDIAN_CONFIG_FILE
     ")\n"
     "  token add <agentId> [--data-dir D]     create an agent and print its token\n"
     "  token list [--data-dir D]              list agents (id and creation time)\n"
     "  token remove <agentId> [--data-dir D]  revoke an agent\n"
     "  cert generate --host H [--out-dir D] [--days N]\n"
-    "                                   write a self-signed " WARDEN_KEY_FILE
+    "                                   write a self-signed " GUARDIAN_KEY_FILE
     " pair\n"
     "                                   (default dir: data/tls, default validity: 825 days)\n"
     "  cert pin <certFile>              print the SPKI pin of a certificate\n"
     "\n"
-    "The data directory defaults to WARDEN_DATA_DIR, then ./data.\n";
+    "The data directory defaults to GUARDIAN_DATA_DIR, then ./data.\n";
 
 struct ParsedArgs {
   std::vector<std::string> positionals;
@@ -119,7 +119,7 @@ std::string dataDirFor(const ParsedArgs& parsed, const EnvLookup& env) {
   if (const auto dir = flag(parsed, "--data-dir")) {
     return *dir;
   }
-  if (const auto fromEnv = env("WARDEN_DATA_DIR"); fromEnv && !fromEnv->empty()) {
+  if (const auto fromEnv = env("GUARDIAN_DATA_DIR"); fromEnv && !fromEnv->empty()) {
     return *fromEnv;
   }
   return kDefaultDataDir;
@@ -408,11 +408,19 @@ int runCli(const std::vector<std::string>& args, std::ostream& out, std::ostream
         return usageError(err, command + " takes no arguments");
       }
       if (command == "version") {
-        out << "warden-server " << serverVersion() << "\n";
+        out << "guardian-server " << serverVersion() << "\n";
       } else {
         out << kUsage;
       }
       return kExitOk;
+    }
+    if (command == "token" || command == "serve") {
+      // Hard cut: an old variable left on the host must not silently fall back to defaults
+      // (for example an empty ./data directory), so refuse before doing anything.
+      if (const auto legacy = legacyEnvVarProblem(env)) {
+        err << "error: " << *legacy << "\n";
+        return kExitUsage;
+      }
     }
     if (command == "token") {
       return runToken(args, out, err, env, now);
@@ -430,4 +438,4 @@ int runCli(const std::vector<std::string>& args, std::ostream& out, std::ostream
   }
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

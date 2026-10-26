@@ -8,15 +8,15 @@
 #include "api_test_support.hpp"
 #include "crypto.hpp"
 
-using namespace warden::server;
-using namespace warden::server::testing;
+using namespace guardian::server;
+using namespace guardian::server::testing;
 using nlohmann::json;
 
 namespace {
 const char* const kValidDraft =
     R"({"schemaVersion":1,"version":0,"rules":[{"id":"r","targets":["**/secret.txt"],"action":"deny","processes":[{"teamId":"X"}]}]})";
 const char* const kInvalidDraft = R"({"schemaVersion":1,"version":0,"rules":[{"id":"r"}]})";
-const char* const kChallenge = R"(Basic realm="Warden", charset="UTF-8")";
+const char* const kChallenge = R"(Basic realm="Guardian", charset="UTF-8")";
 
 std::string basic(const std::string& raw) { return "Basic " + base64Encode(raw); }
 std::string adminAuth() { return basic(std::string("admin:") + ApiFixture::kAdminPassword); }
@@ -29,7 +29,7 @@ std::string header(const HttpResponse& r, const std::string& name) {
 // Admin request that carries the header every state-changing admin call must send.
 HttpRequest adminWrite(const std::string& method, const std::string& path) {
   HttpRequest r = ApiFixture::request(method, path, adminAuth());
-  r.headers["x-warden-request"] = "1";
+  r.headers["x-guardian-request"] = "1";
   return r;
 }
 
@@ -300,7 +300,7 @@ TEST_F(Admin, StateChangingCallsRequireTheCustomHeader) {
     auto missing = request(spec->method, spec->path, adminAuth());
     expectError(api_.handle(missing), 400, "bad_request");
     auto wrong = request(spec->method, spec->path, adminAuth());
-    wrong.headers["x-warden-request"] = "0";
+    wrong.headers["x-guardian-request"] = "0";
     expectError(api_.handle(wrong), 400, "bad_request");
     // Authentication still comes first: no credentials means 401, not a hint about the header.
     EXPECT_EQ(api_.handle(request(spec->method, spec->path)).status, 401);
@@ -309,6 +309,15 @@ TEST_F(Admin, StateChangingCallsRequireTheCustomHeader) {
   auto get = api_.handle(request("GET", "/api/v1/admin/policy", adminAuth()));
   EXPECT_TRUE(json::parse(get.body)["draft"].is_null());
   EXPECT_EQ(json::parse(get.body)["active"]["version"], 1);
+}
+
+TEST_F(Admin, TheFormerWardenHeaderIsNotAccepted) {
+  auto old = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  old.headers["x-warden-request"] = "1";
+  expectError(api_.handle(old), 400, "bad_request");
+  auto current = request("PUT", "/api/v1/admin/policy/draft", adminAuth());
+  current.headers["x-guardian-request"] = "1";
+  EXPECT_NE(api_.handle(current).status, 400);
 }
 
 TEST_F(Admin, ReadOnlyAdminCallsNeedNoCustomHeader) {

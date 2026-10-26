@@ -10,17 +10,18 @@
 #include <vector>
 
 #include "fs_util.hpp"
-#include "warden/policy_parser.hpp"
+#include "guardian/policy_parser.hpp"
 
-using namespace warden::server;
+using namespace guardian::server;
 namespace fs = std::filesystem;
 
 namespace {
 class TempDir {
  public:
   TempDir() {
-    path_ = fs::temp_directory_path() / ("warden_policy_test_" + std::to_string(counter_++) + "_" +
-                                         std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+    path_ =
+        fs::temp_directory_path() / ("guardian_policy_test_" + std::to_string(counter_++) + "_" +
+                                     std::to_string(reinterpret_cast<std::uintptr_t>(this)));
     fs::create_directories(path_);
   }
   TempDir(const TempDir&) = delete;
@@ -47,7 +48,7 @@ TEST(PolicyStore, BootstrapsEmptyPolicyV1) {
   FilePolicyStore store(dir.path());
   const PolicyDoc doc = store.active();
   EXPECT_EQ(doc.version, 1);
-  EXPECT_TRUE(warden::parsePolicy(doc.json).ok());
+  EXPECT_TRUE(guardian::parsePolicy(doc.json).ok());
   EXPECT_TRUE(fs::exists(dir.policies() / "v1.json"));
   EXPECT_EQ(readFile(dir.policies() / "active"), "1\n");
 }
@@ -160,7 +161,7 @@ TEST(PolicyStore, ConcurrentCommitsNeverCorrupt) {
   EXPECT_EQ(succeeded.load(), 1);
   EXPECT_EQ(failed.load(), 7);
   EXPECT_EQ(store.active().version, 2);
-  EXPECT_TRUE(warden::parsePolicy(store.active().json).ok());
+  EXPECT_TRUE(guardian::parsePolicy(store.active().json).ok());
 }
 
 TEST(PolicyStore, FilesLiveDirectlyInDataDir) {

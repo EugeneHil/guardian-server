@@ -5,7 +5,7 @@
 #include <chrono>
 #include <string>
 
-using namespace warden::server;
+using namespace guardian::server;
 
 TEST(FormatUtc, EpochAndLeapDay) {
   EXPECT_EQ(formatUtc(TimePoint{}), "1970-01-01T00:00:00Z");

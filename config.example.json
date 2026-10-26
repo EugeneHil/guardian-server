@@ -1,5 +1,5 @@
 {
-  "_comment": "Template with placeholders only. Copy to config.local.json, set adminPassword (12+ characters) and the TLS paths, or set allowInsecureHttp on a loopback host. Environment variables WARDEN_* override these values.",
+  "_comment": "Template with placeholders only. Copy to config.local.json, set adminPassword (12+ characters) and the TLS paths, or set allowInsecureHttp on a loopback host. Environment variables GUARDIAN_* override these values.",
   "host": "0.0.0.0",
   "port": 8443,
   "tls": {

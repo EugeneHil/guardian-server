@@ -16,13 +16,13 @@
 #include "policy_service.hpp"
 #include "policy_store.hpp"
 
-namespace warden::server::testing {
+namespace guardian::server::testing {
 
 class ApiTempDir {
  public:
   ApiTempDir() {
     path_ = std::filesystem::temp_directory_path() /
-            ("warden_api_test_" + std::to_string(counter_++) + "_" +
+            ("guardian_api_test_" + std::to_string(counter_++) + "_" +
              std::to_string(reinterpret_cast<std::uintptr_t>(this)));
     std::filesystem::create_directories(path_);
   }
@@ -114,4 +114,4 @@ class ApiFixture : public ::testing::Test {
   Api api_;
 };
 
-}  // namespace warden::server::testing
+}  // namespace guardian::server::testing

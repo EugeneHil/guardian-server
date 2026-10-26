@@ -8,7 +8,7 @@
 #include "crypto.hpp"
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 using Json = nlohmann::json;
@@ -136,4 +136,4 @@ std::optional<std::string> FileAgentStore::authenticate(std::string_view token) 
   return match;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

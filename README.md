@@ -1,8 +1,10 @@
-# warden-server
+# guardian-server
 
-Policy server and admin web panel of **Warden**, a lightweight Endpoint DLP. C++17, runs on Windows (a small VPS) and macOS (development). It uses the shared rule engine from warden-core to validate policies; it never evaluates file-access requests itself, the macOS agent does that. The server stores and publishes policy versions, collects the agents' decision events, and serves a small admin panel.
+> Formerly Warden.
 
-Design: [warden-macos/docs/superpowers/specs/2026-10-20-warden-design.md](https://github.com/EugeneHil/warden-macos/blob/develop/docs/superpowers/specs/2026-10-20-warden-design.md) (section 4.5 server, section 6 secrets, section 8 deployment).
+Policy server and admin web panel of **Guardian**, a lightweight Endpoint DLP. C++17, runs on Windows (a small VPS) and macOS (development). It uses the shared rule engine from guardian-core to validate policies; it never evaluates file-access requests itself, the macOS agent does that. The server stores and publishes policy versions, collects the agents' decision events, and serves a small admin panel.
+
+Design: [guardian-macos/docs/superpowers/specs/2026-10-20-guardian-design.md](https://github.com/EugeneHil/guardian-macos/blob/develop/docs/superpowers/specs/2026-10-20-guardian-design.md) (section 4.5 server, section 6 secrets, section 8 deployment).
 Wire contract (source of truth for the agent): [docs/api.md](docs/api.md).
 
 ## Architecture
@@ -11,21 +13,21 @@ Wire contract (source of truth for the agent): [docs/api.md](docs/api.md).
 flowchart LR
   agent["macOS agent<br/>(Bearer token, pinned SPKI)"] -->|"HTTPS: GET policy, POST events"| api
   panel["Admin panel<br/>(browser, Basic auth)"] -->|"HTTPS: /api/v1/admin/*, static files"| api
-  subgraph server["warden-server"]
+  subgraph server["guardian-server"]
     api["Api: routing, auth, throttle, JSON errors"]
     api --> policies["PolicyService / FilePolicyStore"]
     api --> agents["FileAgentStore (hashed tokens)"]
     api --> events["FileEventStore (rotating JSONL)"]
     api --> static["StaticFiles (webRoot allowlist)"]
   end
-  core["warden-core<br/>(parsePolicy, validation, design tokens)"] -.->|"validates drafts at publish"| policies
+  core["guardian-core<br/>(parsePolicy, validation, design tokens)"] -.->|"validates drafts at publish"| policies
   policies --> data[("data dir")]
   agents --> data
   events --> data
-  cli["warden-server CLI<br/>token / cert"] --> agents
+  cli["guardian-server CLI<br/>token / cert"] --> agents
 ```
 
-Layout of the data directory (default `data`, on the VPS `C:\warden\data`); the stores write directly into it:
+Layout of the data directory (default `data`, on the VPS `C:\guardian\data`); the stores write directly into it:
 
 - `agents.json`: agent ids with hashed tokens
 - `policies/vN.json`, `policies/active` (pointer to the active version), `policies/draft.json`
@@ -37,7 +39,7 @@ Policy publishing is crash-safe: `vN.json` is written first, then the `active` p
 
 ## Build, test, lint, coverage
 
-Requires CMake 3.25+, Ninja and (on macOS) Homebrew `llvm` and `openssl@3`. Clone with `--recurse-submodules` (or run `git submodule update --init`) to fetch `external/warden-core`.
+Requires CMake 3.25+, Ninja and (on macOS) Homebrew `llvm` and `openssl@3`. Clone with `--recurse-submodules` (or run `git submodule update --init`) to fetch `external/guardian-core`.
 
 ```sh
 cmake --preset macos            # or: windows (needs VCPKG_INSTALLATION_ROOT)
@@ -54,32 +56,32 @@ Settings come from a JSON file (by default the gitignored local config file in t
 
 | `config.example.json` key | Environment variable | Default | Meaning |
 |---|---|---|---|
-| `host` | `WARDEN_HOST` | `0.0.0.0` | listen address |
-| `port` | `WARDEN_PORT` | `8443` | listen port, 1 to 65535 |
-| `tls.certPath` | `WARDEN_TLS_CERT` | none | server certificate (PEM) |
-| `tls.keyPath` | `WARDEN_TLS_KEY` | none | the TLS private key (PEM) |
+| `host` | `GUARDIAN_HOST` | `0.0.0.0` | listen address |
+| `port` | `GUARDIAN_PORT` | `8443` | listen port, 1 to 65535 |
+| `tls.certPath` | `GUARDIAN_TLS_CERT` | none | server certificate (PEM) |
+| `tls.keyPath` | `GUARDIAN_TLS_KEY` | none | the TLS private key (PEM) |
 | `allowInsecureHttp` | none | `false` | plain HTTP, accepted only when `host` is `127.0.0.1`, `::1` or `localhost` |
-| `dataDir` | `WARDEN_DATA_DIR` | `data` | where the stores write |
-| `webRoot` | `WARDEN_WEB_ROOT` | `web` | directory with the panel files |
-| `adminPassword` | `WARDEN_ADMIN_PASSWORD` | none | admin password, at least 12 characters |
+| `dataDir` | `GUARDIAN_DATA_DIR` | `data` | where the stores write |
+| `webRoot` | `GUARDIAN_WEB_ROOT` | `web` | directory with the panel files |
+| `adminPassword` | `GUARDIAN_ADMIN_PASSWORD` | none | admin password, at least 12 characters |
 
-The server refuses to start (with a message per problem, never echoing secret values) when the password is shorter than 12 characters or TLS is not configured and plain HTTP is not explicitly allowed on a loopback host. An incomplete `tls` block is silently dropped when `allowInsecureHttp` is on.
+The server refuses to start (with a message per problem, never echoing secret values) when the password is shorter than 12 characters or TLS is not configured and plain HTTP is not explicitly allowed on a loopback host. An incomplete `tls` block is silently dropped when `allowInsecureHttp` is on. The server also refuses to start (exit 2) when any environment variable with the former product prefix is set: variables are renamed, not aliased. An existing install is migrated with [docs/vps-cutover.md](docs/vps-cutover.md).
 
 ## CLI reference
 
 ```text
-warden-server version
-warden-server help
-warden-server serve [--config PATH]
-warden-server token add <agentId> [--data-dir D]
-warden-server token list [--data-dir D]
-warden-server token remove <agentId> [--data-dir D]
-warden-server cert generate --host H [--out-dir D] [--days N]
-warden-server cert pin <certFile>
+guardian-server version
+guardian-server help
+guardian-server serve [--config PATH]
+guardian-server token add <agentId> [--data-dir D]
+guardian-server token list [--data-dir D]
+guardian-server token remove <agentId> [--data-dir D]
+guardian-server cert generate --host H [--out-dir D] [--days N]
+guardian-server cert pin <certFile>
 ```
 
 - Exit codes: `0` success, `1` runtime error, `2` usage error. `serve` also exits `0` after SIGINT/SIGTERM.
-- `--data-dir` defaults to `WARDEN_DATA_DIR`, then `./data`.
+- `--data-dir` defaults to `GUARDIAN_DATA_DIR`, then `./data`.
 - `token add` prints only the new token (`wdn_<64 hex>`) on stdout, once; a note goes to stderr. Agent ids use `A-Z a-z 0-9 . _ -`, 1 to 64 characters. Tokens are stored hashed. `token list` prints `<id> <createdAt>` lines.
 - `cert generate` writes a self-signed ECDSA P-256 certificate (SAN = `--host`) and its private key into `--out-dir` (default `data/tls`, relative to the current directory; the key is written first with owner-only permissions). `--days` is 1 to 36500 (default 825). It refuses to overwrite existing files and prints `SPKI pin: <pin>`, the value the agent pins. `cert pin` recomputes it from a certificate.
 
@@ -87,7 +89,7 @@ warden-server cert pin <certFile>
 
 The server serves a dependency-free admin panel (`web/index.html`, `app.js`, `panel.css`, `tokens.css`) from `webRoot` at `/`; the browser's Basic-auth prompt supplies the admin credentials. The panel builds its DOM with `textContent` only and works under the CSP `default-src 'self'`.
 
-`web/tokens.css` is generated from the warden-core design tokens. After updating the submodule, regenerate it and commit the result; CI fails when it is stale:
+`web/tokens.css` is generated from the guardian-core design tokens. After updating the submodule, regenerate it and commit the result; CI fails when it is stale:
 
 ```sh
 python3 -I -B scripts/tokens.py          # regenerate web/tokens.css
@@ -117,11 +119,11 @@ Known limitations:
 - **Slow-client exhaustion.** The HTTP thread pool is bounded (by cores), reads time out after 10 s, the accept queue is unbounded. Accepted for a firewalled single-admin deployment: restrict TCP 8443 to known addresses at the firewall.
 - **Static files follow symlinks inside `webRoot` and have no size cap**, so `webRoot` must be operator-controlled.
 - **Windows file permissions are best-effort.** The `ownerOnly` mode cannot express ACLs; the ACLs of the parent directory protect the TLS private key and `agents.json`, and the install script sets them. Sockets use `SO_EXCLUSIVEADDRUSE`, so a quick restart may fail to bind while old connections linger.
-- **Publishing:** a failure to clear the draft after a successful commit reports an error although the new version is active (a retry publishes the same content again as N+2). Validation errors from warden-core may echo admin-supplied keys or ids.
+- **Publishing:** a failure to clear the draft after a successful commit reports an error although the new version is active (a retry publishes the same content again as N+2). Validation errors from guardian-core may echo admin-supplied keys or ids.
 - **Panel:** the Basic-auth prompt is the browser's; the CSP applies to the HTML document only. The visual browser check is the owner's checklist.
 - `src/cli.cpp` assembles a few secret-looking default file names from adjacent string literals purely to keep the repository's guard hook quiet.
 
-Policy semantics are warden-core's (blocklist, default allow); the server validates with `warden::parsePolicy` and refuses to publish an invalid policy.
+Policy semantics are guardian-core's (blocklist, default allow); the server validates with `guardian::parsePolicy` and refuses to publish an invalid policy.
 
 ## Deployment overview
 
@@ -141,7 +143,7 @@ The target is a small Windows VPS: build with the `windows` preset (vcpkg suppli
 
 - `src/` server sources (`main.cpp` is the thin entry point)
 - `tests/` GoogleTest unit tests (`*_test.cpp`)
-- `external/warden-core` shared rule engine (git submodule)
+- `external/guardian-core` shared rule engine (git submodule)
 - `cmake/` warnings and dependency modules
 - `web/` admin panel (static files)
 - `scripts/` lint, coverage, design-token and docs gates

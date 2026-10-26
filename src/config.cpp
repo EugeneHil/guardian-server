@@ -1,11 +1,12 @@
 #include "config.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <exception>
 #include <nlohmann/json.hpp>
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -104,32 +105,32 @@ bool parsePortText(const std::string& text, int& out) {
 }
 
 void applyEnv(const EnvLookup& env, Config& cfg) {
-  if (const auto v = env("WARDEN_HOST")) {
+  if (const auto v = env("GUARDIAN_HOST")) {
     cfg.host = *v;
   }
-  if (const auto v = env("WARDEN_PORT")) {
+  if (const auto v = env("GUARDIAN_PORT")) {
     int port = 0;
     cfg.port = parsePortText(*v, port) ? port : 0;
   }
-  if (const auto v = env("WARDEN_TLS_CERT")) {
+  if (const auto v = env("GUARDIAN_TLS_CERT")) {
     if (!cfg.tls) {
       cfg.tls = TlsConfig{};
     }
     cfg.tls->certPath = *v;
   }
-  if (const auto v = env("WARDEN_TLS_KEY")) {
+  if (const auto v = env("GUARDIAN_TLS_KEY")) {
     if (!cfg.tls) {
       cfg.tls = TlsConfig{};
     }
     cfg.tls->keyPath = *v;
   }
-  if (const auto v = env("WARDEN_DATA_DIR")) {
+  if (const auto v = env("GUARDIAN_DATA_DIR")) {
     cfg.dataDir = *v;
   }
-  if (const auto v = env("WARDEN_WEB_ROOT")) {
+  if (const auto v = env("GUARDIAN_WEB_ROOT")) {
     cfg.webRoot = *v;
   }
-  if (const auto v = env("WARDEN_ADMIN_PASSWORD")) {
+  if (const auto v = env("GUARDIAN_ADMIN_PASSWORD")) {
     cfg.adminPassword = *v;
   }
 }
@@ -206,4 +207,24 @@ ConfigResult loadConfig(std::string_view fileJson, const EnvLookup& env) {
   }
 }
 
-}  // namespace warden::server
+std::optional<std::string> legacyEnvVarProblem(const EnvLookup& env) {
+  // The former names, kept only to detect them. Suffixes are shared with the GUARDIAN_* names.
+  static constexpr std::array<std::string_view, 9> kSuffixes{
+      "PORT",    "HOST",        "DATA_DIR", "ADMIN_PASSWORD", "TLS_CERT",
+      "TLS_KEY", "CONFIG_FILE", "WEB_ROOT", "KEY_FILE",
+  };
+  std::string message;
+  for (const auto suffix : kSuffixes) {
+    const std::string oldName = "WARDEN_" + std::string(suffix);
+    if (env(oldName)) {
+      message += (message.empty() ? "" : "; ") + oldName + " is no longer read, use GUARDIAN_" +
+                 std::string(suffix);
+    }
+  }
+  if (message.empty()) {
+    return std::nullopt;
+  }
+  return "obsolete environment variables: " + message + "; refusing to start";
+}
+
+}  // namespace guardian::server

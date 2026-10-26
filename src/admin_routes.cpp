@@ -11,7 +11,7 @@
 #include "fs_util.hpp"
 #include "static_files.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -35,11 +35,11 @@ bool authenticateAdmin(const ApiDeps& deps, const HttpRequest& request, HttpResp
                }
                return std::nullopt;
              },
-             R"(Basic realm="Warden", charset="UTF-8")", denied)
+             R"(Basic realm="Guardian", charset="UTF-8")", denied)
       .has_value();
 }
 
-nlohmann::json errorsToJson(const std::vector<warden::ValidationError>& errors) {
+nlohmann::json errorsToJson(const std::vector<guardian::ValidationError>& errors) {
   nlohmann::json out = nlohmann::json::array();
   for (const auto& error : errors) {
     out.push_back({{"path", error.path}, {"message", error.message}});
@@ -131,7 +131,7 @@ HttpResponse notFound() { return errorResponse(404, "not_found", "No such resour
 // set by a cross-site form (and needs a CORS preflight, which the server never grants), so
 // requiring it on state-changing calls closes that CSRF path.
 bool hasRequestMarker(const HttpRequest& request) {
-  const auto header = request.headers.find("x-warden-request");
+  const auto header = request.headers.find("x-guardian-request");
   return header != request.headers.end() && header->second == "1";
 }
 
@@ -143,7 +143,7 @@ RouteHandler adminOnly(RouteHandler inner, bool stateChanging = false) {
           return denied;
         }
         if (stateChanging && !hasRequestMarker(request)) {
-          return errorResponse(400, "bad_request", "Header X-Warden-Request: 1 is required.");
+          return errorResponse(400, "bad_request", "Header X-Guardian-Request: 1 is required.");
         }
         return inner(deps, request);
       };
@@ -168,4 +168,4 @@ void registerAdminRoutes(RouteTable& table) {
   }
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

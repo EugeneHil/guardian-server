@@ -1,27 +1,27 @@
 #pragma once
 
 #include <cstdint>
+#include <guardian/policy_parser.hpp>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <warden/policy_parser.hpp>
 
 #include "policy_store.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 struct ValidationReport {
   bool valid = false;
-  std::vector<warden::ValidationError> errors;
+  std::vector<guardian::ValidationError> errors;
 };
 
 struct PublishResult {
   enum class Failure : std::uint8_t { None, NoDraft, Invalid };
   Failure failure = Failure::None;
   std::optional<PolicyDoc> published;
-  std::vector<warden::ValidationError> errors;
+  std::vector<guardian::ValidationError> errors;
 };
 
 class PolicyService {
@@ -42,4 +42,4 @@ class PolicyService {
   mutable std::mutex mutex_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

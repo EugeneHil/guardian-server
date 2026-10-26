@@ -14,8 +14,8 @@
 
 namespace {
 
-using warden::server::EnvLookup;
-using warden::server::ServeHooks;
+using guardian::server::EnvLookup;
+using guardian::server::ServeHooks;
 
 // Written from the signal handler, so it must be lock-free.
 std::atomic<bool> g_stopRequested{false};
@@ -77,7 +77,7 @@ int main(int argc, char** argv) try {
 
   const EnvLookup env = readEnv;
   const auto now = [] { return std::chrono::system_clock::now(); };
-  const int code = warden::server::runCli(args, std::cout, std::cerr, env, now, hooks);
+  const int code = guardian::server::runCli(args, std::cout, std::cerr, env, now, hooks);
 
   finished.store(true);
   if (watcher.joinable()) {

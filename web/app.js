@@ -1,4 +1,4 @@
-/* Warden admin panel. Classic script, no build step. The DOM is built with createElement and
+/* Guardian admin panel. Classic script, no build step. The DOM is built with createElement and
    textContent only; credentials come from the browser's Basic-auth prompt. */
 (function () {
   "use strict";
@@ -48,7 +48,7 @@
     var init = { method: method, credentials: "same-origin", cache: "no-store", headers: {} };
     if (method !== "GET") {
       // Required by the server on state-changing calls; a cross-site form cannot send it.
-      init.headers["X-Warden-Request"] = "1";
+      init.headers["X-Guardian-Request"] = "1";
     }
     if (body !== undefined) {
       init.body = body;

@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace warden::server {
+namespace guardian::server {
 
 class CryptoError : public std::runtime_error {
  public:
@@ -36,4 +36,4 @@ CertPair generateSelfSignedCert(std::string_view host, int validDays);
 // base64(SHA-256(DER SubjectPublicKeyInfo)) of the certificate.
 std::string spkiPin(std::string_view certPem);
 
-}  // namespace warden::server
+}  // namespace guardian::server
