@@ -77,7 +77,7 @@ std::string trimNewline(std::string text) {
 TEST_F(CliTest, Version) {
   const auto r = run({"version"});
   EXPECT_EQ(r.code, 0);
-  EXPECT_EQ(r.out, "guardian-server 0.1.0\n");
+  EXPECT_EQ(r.out, "guardian-server 0.2.0\n");
 }
 
 TEST_F(CliTest, HelpAndNoArgs) {

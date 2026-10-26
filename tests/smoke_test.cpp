@@ -11,7 +11,7 @@
 TEST(Smoke, VersionIsSemver) {
   const std::string version{guardian::server::serverVersion()};
   EXPECT_TRUE(std::regex_match(version, std::regex{R"(\d+\.\d+\.\d+)"}));
-  EXPECT_EQ(version, "0.1.0");
+  EXPECT_EQ(version, "0.2.0");
 }
 
 TEST(Smoke, LinksGuardianCoreAndRejectsGarbagePolicy) {
