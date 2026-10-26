@@ -57,17 +57,17 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          # The archive holds exactly warden-server.exe and web/; apply-update.ps1 rejects anything else.
+          # The archive holds exactly guardian-server.exe and web/; apply-update.ps1 rejects anything else.
           $stage = Join-Path $env:RUNNER_TEMP 'package'
           New-Item -ItemType Directory -Path $stage | Out-Null
-          Copy-Item build/windows-release/warden-server.exe $stage
+          Copy-Item build/windows-release/guardian-server.exe $stage
           Copy-Item web (Join-Path $stage 'web') -Recurse
           New-Item -ItemType Directory -Path dist | Out-Null
-          $name = "warden-server-$($env:GITHUB_SHA.Substring(0, 12)).zip"
+          $name = "guardian-server-$($env:GITHUB_SHA.Substring(0, 12)).zip"
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath (Join-Path dist $name)
       - uses: actions/upload-artifact@v4
         with:
-          name: warden-server-zip
+          name: guardian-server-zip
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 30
@@ -87,7 +87,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: warden-server-zip
+          name: guardian-server-zip
           path: dist
       - name: Write SSH key and known_hosts
         env:
@@ -116,9 +116,9 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           )
-          scp "${ssh_opts[@]}" "$zip_path" "$VPS_USER@$VPS_HOST:C:/warden/incoming/$zip_name"
+          scp "${ssh_opts[@]}" "$zip_path" "$VPS_USER@$VPS_HOST:C:/guardian/incoming/$zip_name"
           ssh "${ssh_opts[@]}" "$VPS_USER@$VPS_HOST" \
-            "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\warden\\scripts\\apply-update.ps1 -Zip C:\\warden\\incoming\\$zip_name"
+            "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\guardian\\scripts\\apply-update.ps1 -Zip C:\\guardian\\incoming\\$zip_name"
       - name: Remove SSH key
         if: always()
         run: rm -rf "$RUNNER_TEMP/ssh"

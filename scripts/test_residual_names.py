@@ -70,9 +70,9 @@ GROUPS = {
     "submodule": Group(PATTERN, is_submodule_path, True),
     "cpp": Group(PATTERN, is_cpp_path, True),
     "config": Group(PATTERN, is_config_path, True),
-    "scripts": Group(PATTERN, is_scripts_path, False),
-    "docs": Group(PATTERN, is_docs_path, False),
-    "all": Group(PATTERN, lambda path: True, False),
+    "scripts": Group(PATTERN, is_scripts_path, True),
+    "docs": Group(PATTERN, is_docs_path, True),
+    "all": Group(PATTERN, lambda path: True, True),
 }
 
 # Files exempt from a group because they must spell the old name.
@@ -89,6 +89,17 @@ _LEGACY_NAMES = {
 }
 for _group in ("config", "all"):
     ALLOW[_group] |= set(_LEGACY_NAMES)
+
+# The cutover runbook must name the old service, paths, user and variables it migrates from.
+ALLOW["all"].add("docs/vps-cutover.md")
+ALLOW["docs"].add("docs/vps-cutover.md")
+
+# A line that is exactly this note is the "formerly" marker under a title; it is exempt everywhere.
+FORMER_NAME_NOTE = "> Formerly Warden."
+
+
+def is_exempt_line(line):
+    return line.strip() == FORMER_NAME_NOTE
 
 
 def tracked_files():
@@ -125,7 +136,7 @@ def offenders(group_name):
         if text is None:
             continue
         for number, line in enumerate(text.splitlines(), 1):
-            if group.pattern.search(line):
+            if group.pattern.search(line) and not is_exempt_line(line):
                 found.append(f"{path}:{number}: {line.strip()}")
     return found
 
@@ -151,6 +162,16 @@ def core_problems(core_dir):
     elif grep.returncode != 1:
         problems.append("git grep failed: " + grep.stderr.decode("utf-8").strip())
     return problems
+
+
+class ExemptLine(unittest.TestCase):
+    def test_only_the_exact_note_is_exempt(self):
+        self.assertTrue(is_exempt_line("> Formerly Warden."))
+        self.assertTrue(is_exempt_line("> Formerly Warden.  \n"))
+        self.assertFalse(is_exempt_line("> Formerly Warden. See WARDEN_PORT."))
+        self.assertFalse(is_exempt_line("Formerly Warden."))
+        self.assertFalse(is_exempt_line("> Formerly Warden server."))
+        self.assertFalse(is_exempt_line("Warden"))
 
 
 class ResidualNames(unittest.TestCase):

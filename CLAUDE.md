@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Warden — lightweight Endpoint DLP for macOS. Design: `warden-macos/docs/superpowers/specs/2026-10-20-warden-design.md`.
+Guardian — lightweight Endpoint DLP for macOS. Design: `guardian-macos/docs/superpowers/specs/2026-10-20-guardian-design.md`.
 
 ## Rules (non-negotiable)
 

@@ -129,7 +129,7 @@ class ReleasePresetTest(unittest.TestCase):
             self.assertIn("cmake --build --preset windows-release", text)
             self.assertIn("ctest --preset windows-release", text)
         self.assertNotIn("-DCMAKE_BUILD_TYPE=Release", deploy)
-        self.assertIn("build/windows-release/warden-server.exe", deploy)
+        self.assertIn("build/windows-release/guardian-server.exe", deploy)
         self.assertNotIn("matrix", ci)
         for job in ("server-windows", "server-quality", "tokens"):
             self.assertIn("  %s:" % job, ci)
@@ -185,7 +185,7 @@ class InstallServiceTest(unittest.TestCase):
         cls.text = read("scripts", "install-service.ps1")
 
     def test_required_mentions(self):
-        for needle in ("AppStopMethodConsole", "WardenServer", "icacls", "StrictMode",
+        for needle in ("AppStopMethodConsole", "GuardianServer", "icacls", "StrictMode",
                        "ErrorActionPreference", "AppRotateFiles", "AppExit"):
             self.assertIn(needle, self.text)
 
@@ -215,7 +215,7 @@ class RunbookTest(unittest.TestCase):
     def test_secret_names_and_environment(self):
         for needle in ("VPS_HOST", "VPS_USER", "VPS_SSH_KEY", "VPS_KNOWN_HOSTS", "production",
                        "token add mac-eugene", "PasswordAuthentication no", "8443",
-                       "NSSM", "--out-dir C:\\warden\\data\\tls", "Rollback"):
+                       "NSSM", "--out-dir C:\\guardian\\data\\tls", "Rollback"):
             self.assertIn(needle, self.text)
 
     def test_hardening_details(self):
@@ -223,7 +223,15 @@ class RunbookTest(unittest.TestCase):
                        "ruleset", "-ExecutionPolicy Bypass", "Program Files\\nssm",
                        "-NoStart", "ABOVE", "SECOND"):
             self.assertIn(needle, self.text)
-        self.assertNotIn("restart the service (`Restart-Service WardenServer`)", self.text)
+        self.assertNotIn("restart the service (`Restart-Service GuardianServer`)", self.text)
+
+    def test_firewall_rules_are_matched_on_name(self):
+        # Display names are localized on Windows; the rules are created with a fixed Name.
+        self.assertIn("-Name 'GuardianSSH'", self.text)
+        self.assertIn("-Name 'GuardianHTTPS'", self.text)
+        self.assertIn("$n -like 'Guardian*'", self.text)
+        self.assertNotIn("$d -like", self.text)
+        self.assertIn("Set-NetFirewallRule -Name 'GuardianHTTPS' -RemoteAddress", self.text)
 
     def test_operator_guidance(self):
         self.assertIn("Tls12", self.text)
@@ -244,7 +252,7 @@ class RunbookTest(unittest.TestCase):
         self.assertNotIn("winget list", self.text)
         for needle in ("Get-AuthenticodeSignature", "vc_redist.x64.exe", "Get-FileHash",
                        "99F5045FFFBFFB745D67FE3A065A953C4A3D9C253B868892D9B685B0EE7D07B8",
-                       "2.24-101-g897c7ad", "curl.exe", "CoreNet-", "warden-fw-disabled",
+                       "2.24-101-g897c7ad", "curl.exe", "CoreNet-", "guardian-fw-disabled",
                        "Start-Service sshd", "AuthenticationMethods publickey", "sshd.exe\" -T"):
             self.assertIn(needle, self.text)
         self.assertNotIn("KbdInteractiveAuthentication no", self.text)
@@ -254,6 +262,36 @@ class RunbookTest(unittest.TestCase):
         self.assertNotRegex(self.text, r"(?<![~\d.])\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b(?<!127\.0\.0\.1)(?<!0\.0\.0\.0)")
         self.assertNotIn("BEGIN OPENSSH PRIVATE KEY", self.text)
         self.assertNotIn("BEGIN PRIVATE KEY", self.text)
+
+
+class CutoverRunbookTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.text = read("docs", "vps-cutover.md")
+
+    def test_ten_numbered_steps(self):
+        for number in range(1, 11):
+            self.assertRegex(self.text, rf"(?m)^## Step {number}\. \S", f"missing Step {number}")
+        self.assertNotRegex(self.text, r"(?m)^## Step 11\.")
+
+    def test_key_commands(self):
+        old = "War" + "den"  # built so that this file does not spell the former product name
+        for needle in (f"Stop-Service {old}Server", f"Move-Item C:\\{old.lower()} C:\\guardian",
+                       f"nssm remove {old}Server confirm", "GuardianServer",
+                       "C:\\guardian\\bin\\guardian-server.exe", "GUARDIAN_<NAME>=<value>",
+                       "AppEnvironmentExtra", "guardian-deploy", "VPS_USER", "VPS_SSH_KEY",
+                       "/healthz", "/api/v1/policy", "Step 9. Manual rollback", "read -rs TOKEN",
+                       "New-NetFirewallRule -Name 'GuardianSSH'", "Remove-NetFirewallRule -Name", "v0.1.1"):
+            self.assertIn(needle, self.text)
+
+    def test_hard_cut_check_is_shown(self):
+        self.assertIn("nssm get GuardianServer AppEnvironmentExtra", self.text)
+        self.assertRegex(self.text, r"(?i)no `?" + "WAR" + "DEN_")
+
+    def test_no_secret_values(self):
+        self.assertNotIn("BEGIN OPENSSH PRIVATE KEY", self.text)
+        self.assertNotRegex(self.text, r"GUARDIAN_ADMIN_PASSWORD=\S")
+        self.assertNotRegex(self.text, r"(?<![~\d.])\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b(?<!127\.0\.0\.1)")
 
 
 if __name__ == "__main__":

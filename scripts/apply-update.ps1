@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Applies a Warden server release archive on the VPS and rolls back if the new build is unhealthy.
+  Applies a Guardian server release archive on the VPS and rolls back if the new build is unhealthy.
 
 .DESCRIPTION
-  Runs as the low-privilege deploy user from C:\warden\scripts. Steps:
+  Runs as the low-privilege deploy user from C:\guardian\scripts. Steps:
     1. Validate the archive: it must live under <Root>\incoming and contain only
-       warden-server.exe and web/ entries (zip-slip protection).
+       guardian-server.exe and web/ entries (zip-slip protection).
     2. Extract it into <Root>\staging (the service keeps running meanwhile).
     3. Stop the service, copy bin to bin.prev and web to web.prev, install the new files.
     4. Start the service and poll https://127.0.0.1:<Port>/healthz for 60 seconds.
@@ -19,8 +19,8 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Zip,
-  [string]$Root = 'C:\warden',
-  [string]$ServiceName = 'WardenServer',
+  [string]$Root = 'C:\guardian',
+  [string]$ServiceName = 'GuardianServer',
   [int]$Port = 8443,
   [int]$HealthTimeoutSeconds = 60,
   [switch]$Bootstrap
@@ -40,7 +40,7 @@ function Test-UnderDirectory([string]$Path, [string]$Directory) {
   return $full.StartsWith($dir, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
-# Zip-slip protection: every entry name must be exactly warden-server.exe or live under web/,
+# Zip-slip protection: every entry name must be exactly guardian-server.exe or live under web/,
 # with no absolute path, drive letter, ':' or '..' segment.
 function Assert-SafeEntryName([string]$RawName) {
   $name = $RawName.Replace('\', '/')
@@ -52,8 +52,8 @@ function Assert-SafeEntryName([string]$RawName) {
       throw "Archive entry '$RawName' contains a '..' or '.' segment (zip-slip)."
     }
   }
-  if ($name -ne 'warden-server.exe' -and -not $name.StartsWith('web/')) {
-    throw "Archive entry '$RawName' is not warden-server.exe or under web/."
+  if ($name -ne 'guardian-server.exe' -and -not $name.StartsWith('web/')) {
+    throw "Archive entry '$RawName' is not guardian-server.exe or under web/."
   }
 }
 
@@ -76,14 +76,14 @@ function Copy-Contents([string]$From, [string]$To) {
 function Initialize-LoopbackProbe {
   if ($PSVersionTable.PSVersion.Major -ge 6) { return }
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-  if ('WardenLoopbackProbe' -as [type]) { return }
+  if ('GuardianLoopbackProbe' -as [type]) { return }
   Add-Type -TypeDefinition @'
 using System;
 using System.Net;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 
-public static class WardenLoopbackProbe
+public static class GuardianLoopbackProbe
 {
     public static int GetStatus(string url, int timeoutMs)
     {
@@ -121,7 +121,7 @@ function Get-HealthStatus([string]$Url) {
         -TimeoutSec 3 -SkipHttpErrorCheck
       return [int]$response.StatusCode
     }
-    return [WardenLoopbackProbe]::GetStatus($Url, 3000)
+    return [GuardianLoopbackProbe]::GetStatus($Url, 3000)
   } catch {
     return 0
   }
@@ -137,7 +137,7 @@ function Wait-Healthy {
   return $false
 }
 
-function Stop-WardenService {
+function Stop-GuardianService {
   $svc = Get-Service -Name $ServiceName
   if ($svc.Status -ne 'Stopped') {
     Stop-Service -Name $ServiceName
@@ -145,7 +145,7 @@ function Stop-WardenService {
   }
 }
 
-function Start-WardenService {
+function Start-GuardianService {
   Start-Service -Name $ServiceName
   (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 }
@@ -176,12 +176,12 @@ $archive = [System.IO.Compression.ZipFile]::OpenRead($zipFull)
 try {
   foreach ($entry in $archive.Entries) {
     Assert-SafeEntryName $entry.FullName
-    if ($entry.FullName -eq 'warden-server.exe') { $hasExe = $true }
+    if ($entry.FullName -eq 'guardian-server.exe') { $hasExe = $true }
   }
 } finally {
   $archive.Dispose()
 }
-if (-not $hasExe) { throw 'Archive does not contain warden-server.exe.' }
+if (-not $hasExe) { throw 'Archive does not contain guardian-server.exe.' }
 
 if (-not $Bootstrap) {
   if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
@@ -225,7 +225,7 @@ $swapped = $false
 try {
   if (-not $Bootstrap) {
     Write-Step 'Stopping the service'
-    Stop-WardenService
+    Stop-GuardianService
   }
   Clear-Directory $binPrev
   Copy-Contents $bin $binPrev
@@ -234,7 +234,7 @@ try {
   $swapped = $true
 
   Clear-Directory $bin
-  Copy-Item -LiteralPath (Join-Path $stagingFull 'warden-server.exe') -Destination $bin
+  Copy-Item -LiteralPath (Join-Path $stagingFull 'guardian-server.exe') -Destination $bin
   Clear-Directory $web
   $newWeb = Join-Path $stagingFull 'web'
   if (Test-Path -LiteralPath $newWeb) { Copy-Contents $newWeb $web }
@@ -245,7 +245,7 @@ try {
   }
 
   Write-Step 'Starting the service'
-  Start-WardenService
+  Start-GuardianService
   Write-Step "Waiting up to $HealthTimeoutSeconds s for https://127.0.0.1:$Port/healthz"
   if (-not (Wait-Healthy)) { throw 'The new build did not become healthy in time.' }
   Write-Step 'Update applied.'
@@ -256,9 +256,9 @@ try {
   if (-not $Bootstrap) {
     try {
       $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-      if ($svc -and $svc.Status -ne 'Stopped') { Stop-WardenService }
+      if ($svc -and $svc.Status -ne 'Stopped') { Stop-GuardianService }
       if ($swapped) { Restore-Previous }
-      Start-WardenService
+      Start-GuardianService
       Write-Step 'Rolled back to the previous build.'
     } catch {
       Write-Host "[apply-update] ROLLBACK FAILED: $($_.Exception.Message)"
