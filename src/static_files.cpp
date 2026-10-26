@@ -6,7 +6,7 @@
 
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -56,4 +56,4 @@ std::optional<HttpResponse> StaticFiles::serve(std::string_view urlPath) const {
   return std::nullopt;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

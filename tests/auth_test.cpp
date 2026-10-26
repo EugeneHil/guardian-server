@@ -9,7 +9,7 @@
 
 #include "crypto.hpp"
 
-using namespace warden::server;
+using namespace guardian::server;
 
 namespace {
 constexpr int kThreads = 4;

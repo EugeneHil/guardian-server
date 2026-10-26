@@ -6,7 +6,7 @@
 #include <random>
 #include <system_error>
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace fs = std::filesystem;
 
@@ -82,4 +82,4 @@ std::optional<std::string> readFile(const fs::path& path) {
   return data;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

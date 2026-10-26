@@ -8,7 +8,7 @@
 #include <sstream>
 #include <string>
 
-using namespace warden::server;
+using namespace guardian::server;
 
 namespace {
 
@@ -209,7 +209,7 @@ TEST(Config, ErrorsNeverContainThePassword) {
 }
 
 TEST(Config, ExampleConfigParsesButIsNotValid) {
-  std::ifstream in(std::string(WARDEN_SERVER_SOURCE_DIR) + "/config.example.json",
+  std::ifstream in(std::string(GUARDIAN_SERVER_SOURCE_DIR) + "/config.example.json",
                    std::ios::binary);
   ASSERT_TRUE(in.is_open());
   std::stringstream buf;

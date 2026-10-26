@@ -6,7 +6,7 @@
 
 #include "api.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 // Serves the admin panel from `root`. Only an in-code allowlist of URL paths is served and no
 // filesystem path is ever derived from the URL. Files are read on every request.
@@ -21,4 +21,4 @@ class StaticFiles {
   std::filesystem::path root_;
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

@@ -11,7 +11,7 @@
 #include <set>
 #include <string>
 
-using namespace warden::server;
+using namespace guardian::server;
 
 TEST(Sha256Hex, KnownVector) {
   EXPECT_EQ(sha256Hex("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
@@ -72,8 +72,8 @@ std::unique_ptr<X509, X509Free> parseCert(const std::string& pem) {
 }  // namespace
 
 TEST(SelfSignedCert, PinIsStable44CharBase64AndDiffersPerCert) {
-  const CertPair a = generateSelfSignedCert("warden.example", 30);
-  const CertPair b = generateSelfSignedCert("warden.example", 30);
+  const CertPair a = generateSelfSignedCert("guardian.example", 30);
+  const CertPair b = generateSelfSignedCert("guardian.example", 30);
   EXPECT_NE(a.certPem.find("BEGIN CERTIFICATE"), std::string::npos);
   EXPECT_NE(a.keyPem.find("PRIVATE KEY"), std::string::npos);
   const std::string pin = spkiPin(a.certPem);
@@ -98,7 +98,7 @@ TEST(SelfSignedCert, SanContainsIpOrDns) {
   };
   EXPECT_EQ(sanType("203.0.113.7"), GEN_IPADD);
   EXPECT_EQ(sanType("2001:db8::1"), GEN_IPADD);
-  EXPECT_EQ(sanType("warden.example"), GEN_DNS);
+  EXPECT_EQ(sanType("guardian.example"), GEN_DNS);
 }
 
 TEST(Spki, RejectsGarbagePem) {
@@ -107,8 +107,8 @@ TEST(Spki, RejectsGarbagePem) {
 }
 
 TEST(SelfSignedCert, RejectsInvalidValidity) {
-  EXPECT_THROW(generateSelfSignedCert("warden.example", 0), CryptoError);
-  EXPECT_THROW(generateSelfSignedCert("warden.example", -1), CryptoError);
-  EXPECT_THROW(generateSelfSignedCert("warden.example", 36501), CryptoError);
-  EXPECT_NO_THROW(generateSelfSignedCert("warden.example", 36500));
+  EXPECT_THROW(generateSelfSignedCert("guardian.example", 0), CryptoError);
+  EXPECT_THROW(generateSelfSignedCert("guardian.example", -1), CryptoError);
+  EXPECT_THROW(generateSelfSignedCert("guardian.example", 36501), CryptoError);
+  EXPECT_NO_THROW(generateSelfSignedCert("guardian.example", 36500));
 }

@@ -1,4 +1,4 @@
-# Included before external/warden-core, whose include(Dependencies) resolves to this
+# Included before external/guardian-core, whose include(Dependencies) resolves to this
 # file as well; the guard makes that second include a no-op.
 include_guard(GLOBAL)
 
@@ -6,7 +6,7 @@ include(FetchContent)
 
 set(FETCHCONTENT_QUIET OFF)
 
-# Declared before external/warden-core so that warden-core's own identical
+# Declared before external/guardian-core so that guardian-core's own identical
 # declarations are ignored (first declaration wins).
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 set(JSON_Install OFF CACHE BOOL "" FORCE)
@@ -18,7 +18,7 @@ FetchContent_Declare(
     SYSTEM
 )
 
-if(WARDEN_SERVER_BUILD_TESTS)
+if(GUARDIAN_SERVER_BUILD_TESTS)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_Declare(
@@ -47,6 +47,6 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(nlohmann_json httplib)
-if(WARDEN_SERVER_BUILD_TESTS)
+if(GUARDIAN_SERVER_BUILD_TESTS)
     FetchContent_MakeAvailable(googletest)
 endif()

@@ -8,7 +8,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 TOKENS_PY = os.path.join(HERE, "tokens.py")
-GENERATOR_REL = os.path.join("external", "warden-core", "design-tokens")
+GENERATOR_REL = os.path.join("external", "guardian-core", "design-tokens")
 
 
 def make_layout(tmp):

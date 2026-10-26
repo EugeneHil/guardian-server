@@ -8,7 +8,7 @@
 #include "config.hpp"
 #include "timeutil.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 // Optional integration points for `serve`; used by main for signal handling and by tests.
 struct ServeHooks {
@@ -25,4 +25,4 @@ int runCli(const std::vector<std::string>& args, std::ostream& out, std::ostream
 int runCli(const std::vector<std::string>& args, std::ostream& out, std::ostream& err,
            const EnvLookup& env, const NowFn& now, const ServeHooks& hooks);
 
-}  // namespace warden::server
+}  // namespace guardian::server

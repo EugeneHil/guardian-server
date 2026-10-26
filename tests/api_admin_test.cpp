@@ -8,8 +8,8 @@
 #include "api_test_support.hpp"
 #include "crypto.hpp"
 
-using namespace warden::server;
-using namespace warden::server::testing;
+using namespace guardian::server;
+using namespace guardian::server::testing;
 using nlohmann::json;
 
 namespace {

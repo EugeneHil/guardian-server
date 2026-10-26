@@ -7,9 +7,9 @@
 #include <string_view>
 #include <vector>
 
-#include "warden/policy.hpp"
+#include "guardian/policy.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 struct ProcessRef {
   std::string path;
@@ -35,7 +35,7 @@ struct StoredEvent {
 // `events` is valid if and only if `errors` is empty.
 struct EventBatchResult {
   std::vector<Event> events;
-  std::vector<warden::ValidationError> errors;
+  std::vector<guardian::ValidationError> errors;
 };
 
 constexpr std::size_t kMaxEventsPerBatch = 500;
@@ -52,4 +52,4 @@ std::optional<StoredEvent> parseStoredEvent(std::string_view line);
 
 nlohmann::json toJson(const StoredEvent& event);
 
-}  // namespace warden::server
+}  // namespace guardian::server

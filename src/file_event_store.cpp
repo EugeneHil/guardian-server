@@ -5,7 +5,7 @@
 #include "event_store.hpp"
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace fs = std::filesystem;
 
@@ -125,4 +125,4 @@ std::vector<StoredEvent> FileEventStore::recent(std::size_t limit) const {
   return out;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

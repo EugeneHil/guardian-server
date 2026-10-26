@@ -1,5 +1,5 @@
 {
-  "name": "warden-server",
+  "name": "guardian-server",
   "version": "0.1.0",
   "dependencies": ["openssl"],
   "builtin-baseline": "a2f9862da6d88040a8537fb9b8cb24deaa9a196b"

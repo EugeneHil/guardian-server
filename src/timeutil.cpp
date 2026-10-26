@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -172,4 +172,4 @@ std::optional<TimePoint> parseUtc(std::string_view text) {
       std::chrono::duration_cast<TimePoint::duration>(std::chrono::nanoseconds{nanos})};
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

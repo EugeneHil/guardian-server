@@ -5,14 +5,14 @@
 #include <filesystem>
 #include <string>
 
-using namespace warden::server;
+using namespace guardian::server;
 namespace fs = std::filesystem;
 
 namespace {
 class TempDir {
  public:
   TempDir() {
-    path_ = fs::temp_directory_path() / ("warden_fs_test_" + std::to_string(counter_++) + "_" +
+    path_ = fs::temp_directory_path() / ("guardian_fs_test_" + std::to_string(counter_++) + "_" +
                                          std::to_string(reinterpret_cast<std::uintptr_t>(this)));
     fs::create_directories(path_);
   }

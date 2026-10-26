@@ -19,7 +19,7 @@
 #include <string_view>
 #include <tuple>
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -339,4 +339,4 @@ std::string spkiPin(std::string_view certPem) {
       std::string_view{reinterpret_cast<const char*>(digest.data()), digest.size()});
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

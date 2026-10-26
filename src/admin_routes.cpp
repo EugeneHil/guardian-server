@@ -11,7 +11,7 @@
 #include "fs_util.hpp"
 #include "static_files.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -39,7 +39,7 @@ bool authenticateAdmin(const ApiDeps& deps, const HttpRequest& request, HttpResp
       .has_value();
 }
 
-nlohmann::json errorsToJson(const std::vector<warden::ValidationError>& errors) {
+nlohmann::json errorsToJson(const std::vector<guardian::ValidationError>& errors) {
   nlohmann::json out = nlohmann::json::array();
   for (const auto& error : errors) {
     out.push_back({{"path", error.path}, {"message", error.message}});
@@ -168,4 +168,4 @@ void registerAdminRoutes(RouteTable& table) {
   }
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

@@ -12,7 +12,7 @@
 
 #include "timeutil.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 // "Bearer <token>": scheme is case-insensitive, exactly one space, token is 1..256 printable
 // ASCII bytes without whitespace. Total: never throws.
@@ -61,4 +61,4 @@ class AuthThrottle {
   std::map<std::uint64_t, std::string> order_;  // seq -> key, oldest first
 };
 
-}  // namespace warden::server
+}  // namespace guardian::server

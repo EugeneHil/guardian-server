@@ -5,7 +5,7 @@
 
 #include "timeutil.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 
@@ -97,13 +97,14 @@ std::optional<Json> parseJson(std::string_view text) {
   return value;
 }
 
-void addError(std::vector<warden::ValidationError>& errors, std::string path, std::string message) {
+void addError(std::vector<guardian::ValidationError>& errors, std::string path,
+              std::string message) {
   errors.push_back({std::move(path), std::move(message)});
 }
 
 // Required string field.
 bool takeString(const Json& object, const char* key, const std::string& path,
-                std::vector<warden::ValidationError>& errors, std::string& out) {
+                std::vector<guardian::ValidationError>& errors, std::string& out) {
   const auto it = object.find(key);
   if (it == object.end() || !it->is_string()) {
     addError(errors, path, "required string");
@@ -119,7 +120,7 @@ bool takeString(const Json& object, const char* key, const std::string& path,
 
 // Optional string field: absent or null is fine, anything else must be a short string.
 void takeOptionalString(const Json& object, const char* key, const std::string& path,
-                        std::vector<warden::ValidationError>& errors, std::string& out) {
+                        std::vector<guardian::ValidationError>& errors, std::string& out) {
   const auto it = object.find(key);
   if (it == object.end() || it->is_null()) {
     return;
@@ -128,7 +129,7 @@ void takeOptionalString(const Json& object, const char* key, const std::string& 
 }
 
 void takeProcess(const Json& value, const std::string& path, bool pathRequired,
-                 std::vector<warden::ValidationError>& errors, ProcessRef& out) {
+                 std::vector<guardian::ValidationError>& errors, ProcessRef& out) {
   if (!value.is_object()) {
     // Report the required field so the client learns which key is missing.
     addError(errors, path + ".path", "required string");
@@ -144,7 +145,7 @@ void takeProcess(const Json& value, const std::string& path, bool pathRequired,
 }
 
 void takeEvent(const Json& value, const std::string& path,
-               std::vector<warden::ValidationError>& errors, Event& out) {
+               std::vector<guardian::ValidationError>& errors, Event& out) {
   if (!value.is_object()) {
     addError(errors, path, "must be an object");
     return;
@@ -174,7 +175,7 @@ void takeEvent(const Json& value, const std::string& path,
 
 // Shared guard in front of every parse of untrusted or on-disk text.
 std::optional<Json> parseGuarded(std::string_view text,
-                                 std::vector<warden::ValidationError>& errors) {
+                                 std::vector<guardian::ValidationError>& errors) {
   if (!isValidUtf8(text)) {
     addError(errors, "$", "invalid UTF-8");
     return std::nullopt;
@@ -227,7 +228,7 @@ EventBatchResult parseEventBatch(std::string_view json) {
 }
 
 std::optional<StoredEvent> parseStoredEvent(std::string_view line) {
-  std::vector<warden::ValidationError> errors;
+  std::vector<guardian::ValidationError> errors;
   const std::optional<Json> root = parseGuarded(line, errors);
   if (!root || !root->is_object()) {
     return std::nullopt;
@@ -256,4 +257,4 @@ nlohmann::json toJson(const StoredEvent& event) {
   return out;
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server

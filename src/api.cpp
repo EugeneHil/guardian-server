@@ -7,7 +7,7 @@
 
 #include "fs_util.hpp"
 
-namespace warden::server {
+namespace guardian::server {
 
 namespace {
 constexpr const char* kJsonType = "application/json; charset=utf-8";
@@ -132,4 +132,4 @@ HttpResponse Api::handle(const HttpRequest& request) const noexcept {
   return withCommonHeaders(std::move(response));
 }
 
-}  // namespace warden::server
+}  // namespace guardian::server
