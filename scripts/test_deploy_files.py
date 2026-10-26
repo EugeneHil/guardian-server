@@ -284,9 +284,29 @@ class CutoverRunbookTest(unittest.TestCase):
                        "New-NetFirewallRule -Name 'GuardianSSH'", "Remove-NetFirewallRule -Name", "v0.1.1"):
             self.assertIn(needle, self.text)
 
-    def test_hard_cut_check_is_shown(self):
-        self.assertIn("nssm get GuardianServer AppEnvironmentExtra", self.text)
+    def test_hard_cut_check_reads_the_registry_and_machine_scope(self):
+        self.assertIn("Services\\$Svc\\Parameters", self.text)
+        self.assertIn("-Type MultiString", self.text)
+        self.assertIn("GetEnvironmentVariables('Machine')", self.text)
+        self.assertIn("AppEnvironmentExtra", self.text)
+        self.assertRegex(self.text, r"(?m)^\s*foreach \(\$v in 'AppEnvironmentExtra', 'AppEnvironment'\)")
         self.assertRegex(self.text, r"(?i)no `?" + "WAR" + "DEN_")
+
+    def test_no_raw_environment_output(self):
+        # NSSM output is not parseable in PowerShell 5.1 and would print secret values.
+        self.assertNotRegex(self.text, r"(?m)^\s*nssm get \w+ AppEnvironment")
+
+    def test_backup_is_verified(self):
+        self.assertIn("-Exclude logs,staging,incoming,bin.prev,web.prev).FullName", self.text)
+        self.assertRegex(self.text, r"throw \"No backup")
+        zip_name = "war" + "den-pre-cutover.zip"
+        self.assertIn(f"Expand-Archive C:\\cutover-backup\\{zip_name} -DestinationPath $tmp -Force", self.text)
+
+    def test_order_and_etag(self):
+        self.assertIn("Order of events", self.text)
+        self.assertIn("grep -iE '^(HTTP|etag)'", self.text)
+        self.assertIn("Failure in step 2 or 3", self.text)
+        self.assertRegex(self.text, r"(?s)Step 8\..*push the tag `v0\.2\.0`.*Step 9\.")
 
     def test_no_secret_values(self):
         self.assertNotIn("BEGIN OPENSSH PRIVATE KEY", self.text)

@@ -5,7 +5,7 @@ Guardian — lightweight Endpoint DLP for macOS. Design: `guardian-macos/docs/su
 ## Rules (non-negotiable)
 
 - **TDD:** write the failing test first, watch it fail, then implement. No production code without a test that failed first.
-- **Branches:** never commit or push to `main` or `develop`. Work in `feature/WRD-<n>-<slug>`, `fix/…`, `chore/…`, `spike/…`. PRs target `develop`. Releases: PR `develop → main` + tag `vX.Y.Z`.
+- **Branches:** never commit or push to `main` or `develop`. Work in `feature/GRD-<n>-<slug>`, `fix/…`, `chore/…`, `spike/…`. PRs target `develop`. Releases: PR `develop → main` + tag `vX.Y.Z`.
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`, `ci:`, `build:`). Never `--no-verify`, never force push.
 - **Secrets:** never read, write or commit `.env*` (except `.env.example`), `*.pem`, `*.key`, `*.p12`, `*.cer`, `config.local.json`. Configuration goes into `*.example*` templates with placeholders.
 - **Dependencies:** no new dependency without an ADR in `docs/adr/`.

@@ -4,6 +4,13 @@ One-time migration of the existing VPS install (service `WardenServer`, `C:\ward
 
 The server address, the certificate and its SPKI pin, the data (agents, tokens) and the admin password do not change. Downtime is expected (tens of minutes): stop, move, start, with a manual rollback in step 9. There is no side-by-side service.
 
+Order of events (one sequence, no gaps):
+
+1. Merge the server PR to `develop`; land the version bump PR (the release build then reports 0.2.0); merge the release PR `develop` to `main`. Nothing deploys yet (a deploy runs only for a pushed `v*` tag; a manual run on `main` only builds).
+2. Steps 1 to 8 below (cutover, verified with the build from a manual run on `main`).
+3. Right after step 8 passes, push the release tag `v0.2.0` and check the tag deploy (step 8, part 2).
+4. Only after that deploy succeeded and the install has run for one stable day: step 10 (delete the backup and the old deploy user).
+
 Ground rules, learned from the live install:
 
 - The owner runs every command in an elevated PowerShell on the VPS (or in a terminal on the Mac where marked) and pastes the outputs; Claude has no VPS access.
@@ -12,17 +19,27 @@ Ground rules, learned from the live install:
 - `Start-Service` takes about 15 seconds: wait before you probe.
 - The scripts in `C:\guardian\scripts` never update themselves; you copy them by hand (step 7).
 - Hard cut: the new server refuses to start (exit 2) while any `WARDEN_*` variable is set in its environment, and the old binary does not read `GUARDIAN_*`. The two cannot be mixed, which is why step 4 checks the service environment and step 9 restores the old service completely.
+- Every command whose output you paste prints variable NAMES only, never values: environment values may hold the admin password. Do not run a raw `nssm get ... AppEnvironment...`; use the helper below, which reads the registry (the piped output of NSSM 2.24 can be UTF-16 and cannot be parsed reliably).
 - Do not reboot the VPS between steps 4 and 8: the new service is registered for automatic start before it is ready.
 
-In every PowerShell session below, first run:
+In every PowerShell session below (also after a reconnect, and at the start of step 9), first run:
 
 ```powershell
 Set-Alias nssm 'C:\Program Files\nssm\nssm.exe'
+function Get-SvcEnv([string]$Svc, [string]$Value) {
+  $key = "HKLM:\SYSTEM\CurrentControlSet\Services\$Svc\Parameters"
+  @((Get-ItemProperty $key -Name $Value -ErrorAction SilentlyContinue).$Value) | Where-Object { $_ }
+}
+function Show-SvcEnvNames([string]$Svc) {   # names only, safe to paste
+  foreach ($v in 'AppEnvironmentExtra', 'AppEnvironment') {
+    "$Svc $v : " + ((Get-SvcEnv $Svc $v | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')
+  }
+}
 ```
 
 ## Step 1. Preconditions
 
-1. The server PR is merged to `develop`, and `develop` is merged to `main` (release PR). Nothing is deployed by this: a deploy runs only for a pushed `v*` tag. Do not push the `v0.2.0` tag yet.
+1. The server PR and the version bump PR are merged to `develop`, and `develop` is merged to `main` (release PR). Nothing is deployed by this: a deploy runs only for a pushed `v*` tag. Do not push the `v0.2.0` tag yet; it comes right after step 8.
 2. Build the new binary: GitHub, Actions, `deploy`, Run workflow, branch `main`. Only the `build` job runs (the deploy job is skipped outside tag refs). Download the artifact `guardian-server-zip` to your Mac and upload it to the old install; the folder moves with the install in step 3:
 
 ```sh
@@ -41,7 +58,8 @@ curl --pinnedpubkey 'sha256//<pin>' -k -sS -o /dev/null -w '%{http_code}\n' http
 Get-Service WardenServer                                  # Running
 C:\warden\bin\warden-server.exe version                   # 0.1.1
 nssm get WardenServer Application                         # C:\warden\bin\warden-server.exe
-nssm get WardenServer AppEnvironmentExtra                 # normally empty; do not paste it if it holds a password
+Show-SvcEnvNames WardenServer                             # names only; normally both lists are empty
+[Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'WARDEN_*' }   # machine-wide variables (names only)
 Get-PSDrive C | Select-Object Free
 ```
 
@@ -59,11 +77,17 @@ The backup is taken after the stop, so the stores are not written meanwhile. It 
 ```powershell
 Stop-Service WardenServer
 (Get-Service WardenServer).Status                         # Stopped
-Compress-Archive -Path (Get-ChildItem C:\warden -Exclude logs,staging,incoming,bin.prev,web.prev) `
+Compress-Archive -Path (Get-ChildItem C:\warden -Exclude logs,staging,incoming,bin.prev,web.prev).FullName `
   -DestinationPath C:\cutover-backup\warden-pre-cutover.zip
 reg.exe export HKLM\SYSTEM\CurrentControlSet\Services\WardenServer C:\cutover-backup\wardenserver.reg /y
+foreach ($f in 'warden-pre-cutover.zip', 'wardenserver.reg') {
+  $item = Get-Item "C:\cutover-backup\$f" -ErrorAction SilentlyContinue
+  if (-not $item -or $item.Length -eq 0) { throw "No backup ($f): run Start-Service WardenServer and stop here" }
+}
 Get-Item C:\cutover-backup\* | Select-Object Name, Length
 ```
+
+If the guard throws, nothing was changed except the stop: start the old service again and fix the backup before you retry. The rollback depends on both files.
 
 The zip is the backup of `C:\warden\data` (agents, certificate, key) plus `bin`, `web`, `scripts` and the config; the `.reg` file keeps the exact NSSM settings of the old service, including its environment.
 
@@ -92,36 +116,42 @@ Remove-Variable c
 
 ## Step 4. Replace the service, set `GUARDIAN_*`, leave no `WARDEN_*`
 
-Take the old environment, then remove the old service and strip its accounts from the ACLs while they still resolve (`warden-deploy` stays as a user until step 10):
+Take the old environment from the registry (the lists stay in this session only; values are never printed or written to a file), then remove the old service and strip its accounts from the ACLs while they still resolve (`warden-deploy` stays as a user until step 10):
 
 ```powershell
-$oldEnv = @(nssm get WardenServer AppEnvironmentExtra) | Where-Object { $_ -and $_.Trim() }
-"Old variable names: " + (($oldEnv | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')
+$oldExtra = @(Get-SvcEnv WardenServer AppEnvironmentExtra)
+$oldFull  = @(Get-SvcEnv WardenServer AppEnvironment)
 icacls.exe C:\guardian /remove 'NT SERVICE\WardenServer' /T /C | Out-Null
 icacls.exe C:\guardian /remove 'warden-deploy' /T /C | Out-Null
 nssm remove WardenServer confirm
 ```
 
-Register the new service with the new binary path (the binary arrives in step 7; `install-service.ps1` finishes the configuration there). Carry the old environment over under the new prefix, in memory only (a value, such as a password, is never printed or written to a file):
+Register the new service with the new binary path (the binary arrives in step 7; `install-service.ps1` finishes the configuration there). Carry the old lists over under the new prefix, written straight to the registry as multi-strings:
 
 ```powershell
 nssm install GuardianServer C:\guardian\bin\guardian-server.exe
 nssm set GuardianServer AppParameters 'serve --config C:\guardian\config.local.json'
 nssm set GuardianServer AppDirectory C:\guardian
-$newEnv = @($oldEnv | ForEach-Object { $_ -replace '^WARDEN_', 'GUARDIAN_' })
-if ($newEnv.Count -gt 0) { nssm set GuardianServer AppEnvironmentExtra @newEnv }
-Remove-Variable newEnv
+$key = 'HKLM:\SYSTEM\CurrentControlSet\Services\GuardianServer\Parameters'
+if ($oldExtra.Count -gt 0) {
+  Set-ItemProperty -Path $key -Name AppEnvironmentExtra -Type MultiString -Value ([string[]]($oldExtra | ForEach-Object { $_ -replace '^WARDEN_', 'GUARDIAN_' }))
+}
+if ($oldFull.Count -gt 0) {
+  Set-ItemProperty -Path $key -Name AppEnvironment -Type MultiString -Value ([string[]]($oldFull | ForEach-Object { $_ -replace '^WARDEN_', 'GUARDIAN_' }))
+}
+Remove-Variable oldExtra, oldFull, key
 ```
 
-If the old service had no environment (the normal case, because `install-service.ps1` keeps all settings in the config file), nothing is set and the config file carries the configuration. Now the hard-cut check. The exact command is `nssm get GuardianServer AppEnvironmentExtra`; run it through a filter so that values stay hidden, and it must report that nothing with the former prefix remains:
+If the old service had no environment (the normal case, because `install-service.ps1` keeps all settings in the config file), nothing is set and the config file carries the configuration. Now the hard-cut check: the service inherits the machine-wide environment and both NSSM lists, so check all three:
 
 ```powershell
-$envNow = @(nssm get GuardianServer AppEnvironmentExtra) | Where-Object { $_ -and $_.Trim() }
-if ($envNow | Where-Object { $_ -match '^\s*WARDEN_' }) { 'STOP: a WARDEN_ variable is still set' } else { 'OK: no WARDEN_ variable' }
-$envNow | ForEach-Object { ($_ -split '=', 2)[0] }       # names only; each must start with GUARDIAN_
+Show-SvcEnvNames GuardianServer                           # names only; every name must start with GUARDIAN_
+$bad = @('AppEnvironmentExtra', 'AppEnvironment') | ForEach-Object { Get-SvcEnv GuardianServer $_ } | Where-Object { $_ -match '^\s*WARDEN_' }
+$machine = @([Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'WARDEN_*' })
+if ($bad -or $machine) { 'STOP: a WARDEN_ variable is still set' } else { 'OK: no WARDEN_ variable anywhere' }
 ```
 
-If it prints STOP, fix it with `nssm set GuardianServer AppEnvironmentExtra GUARDIAN_<NAME>=<value>` (all variables in one call, the call replaces the list) and run the check again. Do not go on until it prints OK.
+If it prints STOP, fix the cause and run the check again: for the NSSM lists, rewrite them with `Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\GuardianServer\Parameters' -Name AppEnvironmentExtra -Type MultiString -Value @('GUARDIAN_<NAME>=<value>')`; for a machine-wide variable, note its name (and keep its value in your password manager if it is secret, the rollback needs it back), then `[Environment]::SetEnvironmentVariable('<NAME>', $null, 'Machine')`. Do not go on until it prints OK. Then `Remove-Variable bad, machine`.
 
 ## Step 5. Firewall: new rules first, then delete the old ones by `Name`
 
@@ -138,7 +168,7 @@ Get-NetFirewallRule -Direction Inbound -Action Allow | ForEach-Object {
 } | Where-Object { $_.Port -in '22', '8443' -and $_.Name -notlike '*OpenSSH*' } | Format-Table -AutoSize
 ```
 
-Paste the table. Add the new rules (explicit `-Name`), reusing the `Remote` restriction of the old 8443 rule if it had one, and only then remove the old ones with the `Name` values from the table:
+Paste the table and write down the `Remote` value of the old 8443 rule: the rollback needs it. Add the new rules (explicit `-Name`), reusing the `Remote` restriction of the old 8443 rule if it had one, and only then remove the old ones with the `Name` values from the table:
 
 ```powershell
 New-NetFirewallRule -Name 'GuardianSSH' -DisplayName 'Guardian SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
@@ -220,15 +250,17 @@ Install the build uploaded in step 1 (this is the bootstrap mode: no service con
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\apply-update.ps1 -Zip C:\guardian\incoming\guardian-server-<sha>.zip -Bootstrap
-C:\guardian\bin\guardian-server.exe version
+C:\guardian\bin\guardian-server.exe version                   # 0.2.0 (the release build after the version bump PR)
 C:\guardian\bin\guardian-server.exe cert pin C:\guardian\data\tls\server.crt          # the same pin as before the cutover
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\install-service.ps1 -Nssm 'C:\Program Files\nssm\nssm.exe' -NoStart
-nssm get GuardianServer AppEnvironmentExtra                 # run the step 4 check again; names only if it holds anything
+Show-SvcEnvNames GuardianServer                           # run the step 4 check again
 ```
 
-If the `cert pin` value differs from the pin you recorded, stop: the certificate was not moved intact.
+The version is the one the release was built with. If it prints 0.1.0 the bump PR was not part of the release: that is harmless for the cutover (the live install reports 0.1.1, but this is the renamed code line, not a downgrade), but then the tag in step 8 must wait for the bump. If the `cert pin` value differs from the pin you recorded, stop: the certificate was not moved intact.
 
-## Step 8. Start and verify
+## Step 8. Start, verify, then release
+
+Part 1, the cutover build:
 
 ```powershell
 Start-Service GuardianServer
@@ -246,8 +278,8 @@ curl --pinnedpubkey 'sha256//<pin>' -k -sS -o /dev/null -w '%{http_code}\n' http
 curl --pinnedpubkey 'sha256//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' -k -sS -o /dev/null https://<vps-ip>:8443/healthz; echo "exit=$?"
 # 3. an existing agent token still works: the token is read without echo, nothing is stored
 read -rs TOKEN
-curl --pinnedpubkey 'sha256//<pin>' -k -sS -o /dev/null -w '%{http_code}\n' \
-  -H "Authorization: Bearer $TOKEN" https://<vps-ip>:8443/api/v1/policy      # 200
+curl --pinnedpubkey 'sha256//<pin>' -k -sS -o /dev/null -D - \
+  -H "Authorization: Bearer $TOKEN" https://<vps-ip>:8443/api/v1/policy | grep -iE '^(HTTP|etag)'   # 200 and an ETag like "v3"
 unset TOKEN
 ```
 
@@ -255,9 +287,16 @@ unset TOKEN
 
 If any check fails, read the log, and if it is not a trivial fix, go to step 9. Do not push the release tag while the checks fail.
 
+Part 2, the first tag deploy. Only when part 1 passed completely: push the tag `v0.2.0` on the release commit on `main`, approve the `production` deployment, and wait for `[apply-update] Update applied.` in the workflow log. That deploy exercises the new `guardian-deploy` key, its right to start and stop the service and `apply-update.ps1` from `C:\guardian\scripts`. Then repeat checks 1 and 3 above (pinned `/healthz` 200, token `GET /api/v1/policy` 200 with its ETag). If the deploy fails, the script rolls back to the cutover build by itself (`bin.prev`); read the workflow log and the service log before you decide on step 9.
+
 ## Step 9. Manual rollback
 
-Use it only when step 8 cannot be made to pass. It restores the old service exactly: the v0.1.1 binary under `C:\warden` and the `WARDEN_*` environment (the old binary does not read `GUARDIAN_*`).
+Use it only when step 8 cannot be made to pass. Where you stop decides how much of it you need:
+
+- Failure in step 2 or 3 (the service was never removed): if `C:\warden` was already moved, run `Move-Item C:\guardian C:\warden` (and the `Rename-Item` of the `-fw-disabled.txt` file from sub-step 3 if you ran it), then `Start-Service WardenServer`, wait 15 seconds, check the pinned `/healthz`. Nothing else is needed.
+- Failure in step 4 or later: do sub-steps 1 to 6 in order. Sub-steps for things you had not yet done (firewall before step 5, secrets before step 6) are harmless no-ops or can be skipped.
+
+It restores the old service exactly: the v0.1.1 binary under `C:\warden` and the `WARDEN_*` environment (the old binary does not read `GUARDIAN_*`).
 
 1. Stop and remove the new service, and strip its accounts from the ACLs:
 
@@ -273,7 +312,8 @@ nssm remove GuardianServer confirm
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Warden SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
-New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
+New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow `
+  -RemoteAddress '<Remote value of the old 8443 rule from the step 5 table>'   # omit the line's last argument if it was Any
 Remove-NetFirewallRule -Name 'GuardianSSH', 'GuardianHTTPS'
 ```
 
@@ -283,13 +323,15 @@ Remove-NetFirewallRule -Name 'GuardianSSH', 'GuardianHTTPS'
 Move-Item C:\guardian C:\warden
 if (Test-Path C:\guardian-fw-disabled.txt) { Rename-Item C:\guardian-fw-disabled.txt warden-fw-disabled.txt }
 $tmp = 'C:\cutover-backup\restore'
-Expand-Archive C:\cutover-backup\warden-pre-cutover.zip -DestinationPath $tmp
+Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive C:\cutover-backup\warden-pre-cutover.zip -DestinationPath $tmp -Force
 foreach ($d in 'bin', 'web', 'scripts') {
   Remove-Item "C:\warden\$d\*" -Recurse -Force
   Copy-Item "$tmp\$d\*" "C:\warden\$d" -Recurse
 }
 Copy-Item "$tmp\config.local.json" C:\warden\config.local.json -Force
 C:\warden\bin\warden-server.exe version                   # 0.1.1
+Remove-Item $tmp -Recurse -Force
 ```
 
 4. Reinstall `WardenServer` with the restored v0.1.1 `install-service.ps1` (its defaults are the old service, root, account and deploy user), put back the exact NSSM settings of the old service, including its environment, and start it:
@@ -297,7 +339,8 @@ C:\warden\bin\warden-server.exe version                   # 0.1.1
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\warden\scripts\install-service.ps1 -Nssm 'C:\Program Files\nssm\nssm.exe' -NoStart
 reg.exe import C:\cutover-backup\wardenserver.reg
-nssm get WardenServer AppEnvironmentExtra                 # as before the cutover
+Show-SvcEnvNames WardenServer                             # names only; as before the cutover
+# if you removed a machine-wide WARDEN_ variable in step 4: [Environment]::SetEnvironmentVariable('<NAME>', '<value from your password manager>', 'Machine')
 Start-Service WardenServer
 Start-Sleep -Seconds 15
 Get-Service WardenServer                                  # Running
@@ -312,9 +355,9 @@ gh secret set VPS_SSH_KEY --env production --repo <owner>/guardian-server < ~/.s
 
 6. Check from the Mac: the pinned `/healthz` answers 200 (the command from step 1) and the agent's "test connection" succeeds. Do not push a release tag: the renamed workflow deploys to the new paths, which the restored install does not have. Keep `C:\cutover-backup` until the next attempt.
 
-## Step 10. Cleanup after one stable day
+## Step 10. Cleanup after the tag deploy and one stable day
 
-When the new install has run for a day without trouble (agents report events, `Get-Service GuardianServer` is Running, no errors in the log):
+Only when the tag deploy of step 8 succeeded and the new install has run for a day without trouble (agents report events, `Get-Service GuardianServer` is Running, no errors in the log):
 
 ```powershell
 Remove-Item C:\cutover-backup -Recurse -Force
@@ -330,5 +373,3 @@ Restart-Service sshd
 ```
 
 On the Mac, delete the old key pair (`~/.ssh/warden-deploy` and `~/.ssh/warden-deploy.pub`). In GitHub, nothing named after the old user remains in the `production` environment (check with `gh secret list --env production`).
-
-Only now push the release tag `v0.2.0` (after the separate version bump PR). The first deploy lands on the already migrated paths: `C:\guardian\incoming`, `C:\guardian\scripts\apply-update.ps1` and the service `GuardianServer`. A tag pushed earlier would fail its health check and roll back to whatever is in `bin.prev`.
