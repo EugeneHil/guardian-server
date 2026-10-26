@@ -237,9 +237,9 @@ TEST(Config, LegacyEnvVarProblemNamesTheOldAndTheNewVariable) {
 
 TEST(Config, LegacyEnvVarProblemListsEverySetOldVariable) {
   const auto problem = legacyEnvVarProblem(envOf(
-      {{"WARDEN_PORT", "1"}, {"WARDEN_ADMIN_PASSWORD", kPassword}, {"WARDEN_CONFIG_FILE", "c"}}));
+      {{"WARDEN_PORT", "1"}, {"WARDEN_ADMIN_PASSWORD", kPassword}, {"WARDEN_WEB_ROOT", "w"}}));
   ASSERT_TRUE(problem.has_value());
-  for (const char* name : {"PORT", "ADMIN_PASSWORD", "CONFIG_FILE"}) {
+  for (const char* name : {"PORT", "ADMIN_PASSWORD", "WEB_ROOT"}) {
     EXPECT_NE(problem->find(std::string("WARDEN_") + name), std::string::npos) << name;
     EXPECT_NE(problem->find(std::string("GUARDIAN_") + name), std::string::npos) << name;
   }
@@ -247,11 +247,17 @@ TEST(Config, LegacyEnvVarProblemListsEverySetOldVariable) {
   EXPECT_EQ(problem->find(kPassword), std::string::npos);  // never echoes values
 }
 
-TEST(Config, LegacyEnvVarProblemCoversAllNineOldNames) {
-  for (const char* name : {"PORT", "HOST", "DATA_DIR", "ADMIN_PASSWORD", "TLS_CERT", "TLS_KEY",
-                           "CONFIG_FILE", "WEB_ROOT", "KEY_FILE"}) {
+TEST(Config, LegacyEnvVarProblemCoversAllSevenOldNames) {
+  for (const char* name :
+       {"PORT", "HOST", "DATA_DIR", "ADMIN_PASSWORD", "TLS_CERT", "TLS_KEY", "WEB_ROOT"}) {
     const auto problem = legacyEnvVarProblem(envOf({{std::string("WARDEN_") + name, "x"}}));
     ASSERT_TRUE(problem.has_value()) << name;
     EXPECT_NE(problem->find(std::string("GUARDIAN_") + name), std::string::npos) << name;
   }
+}
+
+// WARDEN_CONFIG_FILE and WARDEN_KEY_FILE were compile-time macros in v0.1.1, never environment
+// variables, so setting them changes nothing and must not block the start.
+TEST(Config, LegacyEnvVarProblemIgnoresNamesThatWereNeverVariables) {
+  EXPECT_FALSE(legacyEnvVarProblem(envOf({{"WARDEN_CONFIG_FILE", "x"}, {"WARDEN_KEY_FILE", "x"}})));
 }
