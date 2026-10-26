@@ -130,7 +130,7 @@ class SecretReadBypassTests(unittest.TestCase):
 
 class GitBypassTests(unittest.TestCase):
     def test_blocks_dash_C_push_to_protected(self):
-        blocked(self, "git -C ../warden-macos push origin main")
+        blocked(self, "git -C ../guardian-macos push origin main")
 
     def test_blocks_dash_c_option_commit_on_protected(self):
         blocked(self, "git -c user.name=x commit -m x", "develop")
@@ -173,13 +173,13 @@ class GitBypassTests(unittest.TestCase):
         allowed(self, "git push -n origin feature/WRD-1-x", "feature/WRD-1-x")
 
     def test_cd_into_other_repo_uses_that_repos_branch(self):
-        event = {"tool_name": "Bash", "tool_input": {"command": "cd ../warden-macos && git commit -m x"}, "cwd": "/r/warden-core"}
-        lookup = lambda d: "develop" if d == "/r/warden-macos" else "feature/x"
+        event = {"tool_name": "Bash", "tool_input": {"command": "cd ../guardian-macos && git commit -m x"}, "cwd": "/r/guardian-core"}
+        lookup = lambda d: "develop" if d == "/r/guardian-macos" else "feature/x"
         self.assertIsNotNone(decide(event, "feature/x", branch_lookup=lookup))
 
     def test_dash_C_uses_target_repos_branch(self):
-        event = {"tool_name": "Bash", "tool_input": {"command": "git -C ../warden-macos commit -m x"}, "cwd": "/r/warden-core"}
-        lookup = lambda d: "develop" if d == "/r/warden-macos" else "feature/x"
+        event = {"tool_name": "Bash", "tool_input": {"command": "git -C ../guardian-macos commit -m x"}, "cwd": "/r/guardian-core"}
+        lookup = lambda d: "develop" if d == "/r/guardian-macos" else "feature/x"
         self.assertIsNotNone(decide(event, "feature/x", branch_lookup=lookup))
 
     def test_checkout_protected_then_commit(self):

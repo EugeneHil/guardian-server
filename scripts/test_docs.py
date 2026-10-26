@@ -68,6 +68,13 @@ class ReadmeTest(unittest.TestCase):
         for heading in ("Architecture", "Configuration", "Security notes", "Roadmap"):
             self.assertRegex(readme, r"(?m)^#{1,3} " + re.escape(heading) + r"\s*$")
 
+    def test_names_are_guardian(self):
+        readme = read("README.md")
+        self.assertTrue(readme.startswith("# guardian-server\n"))
+        self.assertEqual("> Formerly " + "War" + "den.", readme.splitlines()[2])
+        self.assertIn("GUARDIAN_DATA_DIR", readme)
+        self.assertIn("external/guardian-core", readme)
+
     def test_mermaid_block(self):
         self.assertIn("```mermaid", read("README.md"))
 

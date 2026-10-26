@@ -1,16 +1,20 @@
 # VPS setup runbook
 
-Checklist for installing the Warden server on a Windows VPS. The owner runs every command on the VPS in an elevated PowerShell (Administrators); Claude cannot reach the VPS and only reviews outputs you paste back. Never paste a password, a private key or a token into chat or into the repository.
+> Formerly Warden.
 
-Placeholders: `<vps-ip>` is the public address of the VPS, `<owner-user>` your administrator account, `warden-deploy` the low-privilege deploy user created in step 1.
+This is the fresh-install runbook. An existing install that still runs under the former name is migrated with [vps-cutover.md](vps-cutover.md).
 
-Design context: section 8 of `warden-macos/docs/superpowers/specs/2026-10-20-warden-design.md`; the service host is explained in [ADR 0002](adr/0002-windows-service-nssm.md); the HTTP API in [api.md](api.md).
+Checklist for installing the Guardian server on a Windows VPS. The owner runs every command on the VPS in an elevated PowerShell (Administrators); Claude cannot reach the VPS and only reviews outputs you paste back. Never paste a password, a private key or a token into chat or into the repository.
+
+Placeholders: `<vps-ip>` is the public address of the VPS, `<owner-user>` your administrator account, `guardian-deploy` the low-privilege deploy user created in step 1.
+
+Design context: section 8 of `guardian-macos/docs/superpowers/specs/2026-10-20-guardian-design.md`; the service host is explained in [ADR 0002](adr/0002-windows-service-nssm.md); the HTTP API in [api.md](api.md).
 
 Layout created by these steps:
 
 ```text
-C:\warden\
-  bin\ bin.prev\        warden-server.exe and the previous build
+C:\guardian\
+  bin\ bin.prev\        guardian-server.exe and the previous build
   web\ web.prev\        admin panel files and the previous copy
   data\ data\tls\       agents.json, policy, events; certificate and private key
   incoming\ staging\    uploaded update archives and their extraction area
@@ -37,21 +41,21 @@ Create the deploy user. It gets a random password that is never displayed or sto
 $bytes = New-Object byte[] 48
 [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
 $password = ConvertTo-SecureString ([Convert]::ToBase64String($bytes)) -AsPlainText -Force
-New-LocalUser -Name 'warden-deploy' -Password $password -PasswordNeverExpires `
-  -Description 'Warden deploy (key-only, low privilege)'
+New-LocalUser -Name 'guardian-deploy' -Password $password -PasswordNeverExpires `
+  -Description 'Guardian deploy (key-only, low privilege)'
 Remove-Variable password, bytes
 ```
 
 The user is not in Administrators. Generate a dedicated key pair on your Mac (not on the VPS), with no reuse of any other key:
 
 ```sh
-ssh-keygen -t ed25519 -f ~/.ssh/warden-deploy -C warden-deploy
+ssh-keygen -t ed25519 -f ~/.ssh/guardian-deploy -C guardian-deploy
 ```
 
-Put the public half (`warden-deploy.pub`) on the VPS. The key file lives outside the user profile, so the profile does not have to exist; sshd (running as SYSTEM) reads it and only Administrators and SYSTEM can change it:
+Put the public half (`guardian-deploy.pub`) on the VPS. The key file lives outside the user profile, so the profile does not have to exist; sshd (running as SYSTEM) reads it and only Administrators and SYSTEM can change it:
 
 ```powershell
-$keys = 'C:\ProgramData\ssh\warden-deploy_authorized_keys'
+$keys = 'C:\ProgramData\ssh\guardian-deploy_authorized_keys'
 Set-Content -Path $keys -Value '<paste the public key line here>' -Encoding ascii
 icacls.exe $keys /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F'
 ```
@@ -71,7 +75,7 @@ PasswordAuthentication no
 PubkeyAuthentication yes
 PermitEmptyPasswords no
 AuthenticationMethods publickey
-AllowUsers warden-deploy <owner-user>
+AllowUsers guardian-deploy <owner-user>
 ```
 
 Write `<owner-user>` in lowercase: Windows OpenSSH matches `AllowUsers` names against the lowercased account name, so a mixed-case entry can lock you out.
@@ -81,8 +85,8 @@ Write `<owner-user>` in lowercase: Windows OpenSSH matches `AllowUsers` names ag
 and add this block at the very end, after the existing `Match` blocks:
 
 ```text
-Match User warden-deploy
-    AuthorizedKeysFile __PROGRAMDATA__/ssh/warden-deploy_authorized_keys
+Match User guardian-deploy
+    AuthorizedKeysFile __PROGRAMDATA__/ssh/guardian-deploy_authorized_keys
 ```
 
 The configuration must validate before the restart, and you prove key login in a SECOND terminal before closing this session:
@@ -97,16 +101,16 @@ Keep the first session open. From the Mac, in a SECOND terminal, log in with eac
 Verification (from the Mac):
 
 ```sh
-ssh -i ~/.ssh/warden-deploy -o BatchMode=yes warden-deploy@<vps-ip> "whoami"           # prints the deploy user
+ssh -i ~/.ssh/guardian-deploy -o BatchMode=yes guardian-deploy@<vps-ip> "whoami"           # prints the deploy user
 ssh -o BatchMode=yes <owner-user>@<vps-ip> "whoami"                                      # owner key works
-ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password warden-deploy@<vps-ip>   # must be refused
-ssh -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive warden-deploy@<vps-ip>   # refused, and the list of methods in the error is only (publickey)
+ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password guardian-deploy@<vps-ip>   # must be refused
+ssh -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive guardian-deploy@<vps-ip>   # refused, and the list of methods in the error is only (publickey)
 ```
 
 ```powershell
 & "$env:SystemRoot\System32\OpenSSH\sshd.exe" -T | Select-String -Pattern 'authenticationmethods|passwordauthentication|pubkeyauthentication|allowusers'   # publickey, no, yes, both users
 Select-String -Path C:\ProgramData\ssh\sshd_config -Pattern '^PasswordAuthentication'     # no
-(Get-LocalGroupMember Administrators).Name -contains "$env:COMPUTERNAME\warden-deploy"      # False
+(Get-LocalGroupMember Administrators).Name -contains "$env:COMPUTERNAME\guardian-deploy"      # False
 ```
 
 ## Step 2. Windows Firewall: TCP 22 and 8443 only
@@ -114,11 +118,11 @@ Select-String -Path C:\ProgramData\ssh\sshd_config -Pattern '^PasswordAuthentica
 Add the two allow rules first and switch the default to "block" last, so you never block yourself:
 
 ```powershell
-New-NetFirewallRule -DisplayName 'Warden SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
-New-NetFirewallRule -DisplayName 'Warden HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
+New-NetFirewallRule -Name 'GuardianSSH' -DisplayName 'Guardian SSH' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
+New-NetFirewallRule -Name 'GuardianHTTPS' -DisplayName 'Guardian HTTPS' -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
 ```
 
-Windows ships dozens of inbound allow rules (file sharing, remote management, discovery, streaming and more) that would defeat "only 22 and 8443". Their display names are localized and differ between machines, so do not disable them one by one by name. Disable everything except a keep list, matching on the language-independent rule `Name`. Keep `CoreNet-*` (Core Networking: DHCP, IPv6 and ICMPv6; without DHCP the VPS can lose its address), the OpenSSH rule, the two `Warden*` rules and anything you deliberately use (for example your own VPN: add its rule to `$keepExtra`). Remote desktop is disabled here; keep it only if you administer the VPS through it, and then restrict it to your address.
+Windows ships dozens of inbound allow rules (file sharing, remote management, discovery, streaming and more) that would defeat "only 22 and 8443". Their display names are localized and differ between machines, so do not disable them one by one by name. Disable everything except a keep list, matching on the language-independent rule `Name` (never on `DisplayName`; that is why the two rules above are created with an explicit `-Name`). Keep `CoreNet-*` (Core Networking: DHCP, IPv6 and ICMPv6; without DHCP the VPS can lose its address), the OpenSSH rule, the two `Guardian*` rules (matched by `Name`) and anything you deliberately use (for example your own VPN: add its rule to `$keepExtra`). Remote desktop is disabled here; keep it only if you administer the VPS through it, and then restrict it to your address.
 
 First list what would stay (nothing is changed yet) and check that the list contains exactly what you expect:
 
@@ -126,9 +130,9 @@ First list what would stay (nothing is changed yet) and check that the list cont
 $keepExtra = @()   # e.g. @('*WireGuard*')
 $all = Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow
 $toDisable = $all | Where-Object {
-  $n = $_.Name; $d = $_.DisplayName
-  -not ($n -like 'CoreNet-*' -or $n -like '*OpenSSH*' -or $d -like 'Warden*' -or
-        ($keepExtra | Where-Object { $n -like $_ -or $d -like $_ }))
+  $n = $_.Name
+  -not ($n -like 'CoreNet-*' -or $n -like '*OpenSSH*' -or $n -like 'Guardian*' -or
+        ($keepExtra | Where-Object { $n -like $_ }))
 }
 "Keep: $($all.Count - $toDisable.Count), disable: $($toDisable.Count)"
 $all | Where-Object { $toDisable.Name -notcontains $_.Name } | Select-Object Name, DisplayName
@@ -139,10 +143,10 @@ Then disable the rest. The names are saved so you can undo it; set `$expected` t
 ```powershell
 $expected = 0   # the "Keep" number from the listing above
 if (($all.Count - $toDisable.Count) -eq $expected) {
-  $toDisable.Name | Set-Content -Path C:\warden-fw-disabled.txt
+  $toDisable.Name | Set-Content -Path C:\guardian-fw-disabled.txt
   $toDisable | Disable-NetFirewallRule
 } else { 'Keep count differs from $expected: nothing was disabled' }
-# undo: Get-Content C:\warden-fw-disabled.txt | ForEach-Object { Enable-NetFirewallRule -Name $_ }
+# undo: Get-Content C:\guardian-fw-disabled.txt | ForEach-Object { Enable-NetFirewallRule -Name $_ }
 ```
 
 Now switch the default to "block" and confirm the allow rules still work (the hosting provider's console does not depend on the OS firewall, so it stays available if something goes wrong):
@@ -155,7 +159,7 @@ Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction
 Recommended: limit 8443 to the addresses that need it (your office or home address, the hosts the Macs connect from) instead of the whole internet, when those addresses are stable:
 
 ```powershell
-Set-NetFirewallRule -DisplayName 'Warden HTTPS' -RemoteAddress '<allowed-address-1>','<allowed-address-2>'
+Set-NetFirewallRule -Name 'GuardianHTTPS' -RemoteAddress '<allowed-address-1>','<allowed-address-2>'
 ```
 
 Verification:
@@ -205,60 +209,60 @@ Pass `-Nssm 'C:\Program Files\nssm\nssm.exe'` in step 7. The site `nssm.cc` is s
 ## Step 4. Directory layout and base ACLs
 
 ```powershell
-$root = 'C:\warden'
+$root = 'C:\guardian'
 foreach ($d in 'bin','bin.prev','web','web.prev','data','data\tls','incoming','staging','logs','scripts') {
   New-Item -ItemType Directory -Force (Join-Path $root $d) | Out-Null
 }
 $system = '*S-1-5-18:(OI)(CI)F'; $admins = '*S-1-5-32-544:(OI)(CI)F'
-icacls.exe $root /inheritance:r /grant:r $system $admins 'warden-deploy:RX'
+icacls.exe $root /inheritance:r /grant:r $system $admins 'guardian-deploy:RX'
 foreach ($d in 'bin','web','bin.prev','web.prev','staging','incoming') {
-  icacls.exe (Join-Path $root $d) /inheritance:r /grant:r $system $admins 'warden-deploy:(OI)(CI)M'
+  icacls.exe (Join-Path $root $d) /inheritance:r /grant:r $system $admins 'guardian-deploy:(OI)(CI)M'
 }
-icacls.exe (Join-Path $root 'scripts') /inheritance:r /grant:r $system $admins 'warden-deploy:(OI)(CI)RX'
+icacls.exe (Join-Path $root 'scripts') /inheritance:r /grant:r $system $admins 'guardian-deploy:(OI)(CI)RX'
 icacls.exe (Join-Path $root 'data') /inheritance:r /grant:r $system $admins
 icacls.exe (Join-Path $root 'logs') /inheritance:r /grant:r $system $admins
 ```
 
 The model: SYSTEM and Administrators have full control everywhere. The deploy user can only write the update areas (`incoming`, `staging`, `bin`, `web` and their `.prev` copies) and read the scripts; it cannot read `data` (agents, certificate, private key) or the local config file. The service account is added in step 7 by `install-service.ps1`: read and execute on `bin` and `web`, modify on `data` and `logs`, read-only on the config file and the TLS files.
 
-Copy the scripts from your checkout to the VPS. Scripts are updated by hand only: `apply-update.ps1` runs from `C:\warden\scripts` and never replaces itself or its sibling, and the deploy user cannot modify them. After you change anything under `scripts/` in the repository, re-copy both files as an Administrator and re-run `install-service.ps1` if it changed.
+Copy the scripts from your checkout to the VPS. Scripts are updated by hand only: `apply-update.ps1` runs from `C:\guardian\scripts` and never replaces itself or its sibling, and the deploy user cannot modify them. After you change anything under `scripts/` in the repository, re-copy both files as an Administrator and re-run `install-service.ps1` if it changed.
 
 ```sh
-scp scripts/install-service.ps1 scripts/apply-update.ps1 <owner-user>@<vps-ip>:C:/warden/scripts/
+scp scripts/install-service.ps1 scripts/apply-update.ps1 <owner-user>@<vps-ip>:C:/guardian/scripts/
 ```
 
 Verification:
 
 ```powershell
-icacls.exe C:\warden
-icacls.exe C:\warden\data          # only SYSTEM and Administrators (service account appears after step 7)
-Get-ChildItem C:\warden\scripts
+icacls.exe C:\guardian
+icacls.exe C:\guardian\data          # only SYSTEM and Administrators (service account appears after step 7)
+Get-ChildItem C:\guardian\scripts
 ```
 
 ## Step 5. Certificate on the VPS and the SPKI pin
 
-The first build must exist on the VPS before `warden-server` can run. Bootstrap it: run the `deploy` workflow on the `main` branch after the PR is merged (Actions, `deploy`, Run workflow, branch `main`); only the `build` job runs, because the deploy job is skipped outside tag refs, download the artifact `warden-server-zip` on your Mac, and upload it:
+The first build must exist on the VPS before `guardian-server` can run. Bootstrap it: run the `deploy` workflow on the `main` branch after the PR is merged (Actions, `deploy`, Run workflow, branch `main`); only the `build` job runs, because the deploy job is skipped outside tag refs, download the artifact `guardian-server-zip` on your Mac, and upload it:
 
 ```sh
-scp warden-server-<sha>.zip <owner-user>@<vps-ip>:C:/warden/incoming/
+scp guardian-server-<sha>.zip <owner-user>@<vps-ip>:C:/guardian/incoming/
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File C:\warden\scripts\apply-update.ps1 -Zip C:\warden\incoming\warden-server-<sha>.zip -Bootstrap
-C:\warden\bin\warden-server.exe version
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\apply-update.ps1 -Zip C:\guardian\incoming\guardian-server-<sha>.zip -Bootstrap
+C:\guardian\bin\guardian-server.exe version
 ```
 
 Generate the self-signed certificate on the VPS, so the private key never leaves it:
 
 ```powershell
-C:\warden\bin\warden-server.exe cert generate --host <vps-ip> --out-dir C:\warden\data\tls
+C:\guardian\bin\guardian-server.exe cert generate --host <vps-ip> --out-dir C:\guardian\data\tls
 ```
 
 The command prints `SPKI pin: ...`. The pin is public: record it (it goes into the agent Settings on each Mac and into the README of the deployment). It refuses to overwrite an existing certificate. Verification:
 
 ```powershell
-Get-ChildItem C:\warden\data\tls
-C:\warden\bin\warden-server.exe cert pin C:\warden\data\tls\server.crt    # same pin again
+Get-ChildItem C:\guardian\data\tls
+C:\guardian\bin\guardian-server.exe cert pin C:\guardian\data\tls\server.crt    # same pin again
 ```
 
 ## Step 6. Local config file
@@ -266,54 +270,54 @@ C:\warden\bin\warden-server.exe cert pin C:\warden\data\tls\server.crt    # same
 The release archive does not ship the template, so copy it from your checkout first (the local config file is ignored by git; never commit or paste it):
 
 ```sh
-scp config.example.json <owner-user>@<vps-ip>:C:/warden/config.example.json   # on the Mac, from the repository checkout
+scp config.example.json <owner-user>@<vps-ip>:C:/guardian/config.example.json   # on the Mac, from the repository checkout
 ```
 
-Create `C:\warden\config.local.json` from it on the VPS. This script generates a random admin password (24 characters) and prints it once; store it in your password manager straight away, never paste it anywhere else, and clear the console afterwards (`Clear-Host`). The private-key file written by `cert generate` is the only file in `data\tls` that is not a `.crt`; `install-service.ps1` expects it there:
+Create `C:\guardian\config.local.json` from it on the VPS. This script generates a random admin password (24 characters) and prints it once; store it in your password manager straight away, never paste it anywhere else, and clear the console afterwards (`Clear-Host`). The private-key file written by `cert generate` is the only file in `data\tls` that is not a `.crt`; `install-service.ps1` expects it there:
 
 ```powershell
-$tls = 'C:\warden\data\tls'
+$tls = 'C:\guardian\data\tls'
 $key = Get-ChildItem $tls -File | Where-Object { $_.Extension -ne '.crt' } | Select-Object -First 1
 if (-not $key) { throw 'private key file not found in data\tls' }
 $bytes = New-Object byte[] 18
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
 $pw = [Convert]::ToBase64String($bytes).Replace('+','A').Replace('/','b')
-$cfg = Get-Content C:\warden\config.example.json -Raw | ConvertFrom-Json
+$cfg = Get-Content C:\guardian\config.example.json -Raw | ConvertFrom-Json
 $cfg.PSObject.Properties.Remove('_comment')
-$cfg.tls.certPath = 'C:/warden/data/tls/server.crt'
-$cfg.tls.keyPath  = "C:/warden/data/tls/$($key.Name)"
-$cfg.dataDir = 'C:/warden/data'; $cfg.webRoot = 'C:/warden/web'
+$cfg.tls.certPath = 'C:/guardian/data/tls/server.crt'
+$cfg.tls.keyPath  = "C:/guardian/data/tls/$($key.Name)"
+$cfg.dataDir = 'C:/guardian/data'; $cfg.webRoot = 'C:/guardian/web'
 $cfg.allowInsecureHttp = $false; $cfg.adminPassword = $pw
-$cfg | ConvertTo-Json -Depth 5 | Set-Content -Path C:\warden\config.local.json -Encoding ascii
+$cfg | ConvertTo-Json -Depth 5 | Set-Content -Path C:\guardian\config.local.json -Encoding ascii
 "ADMIN PASSWORD (store it now, do not paste it anywhere): $pw"
 ```
 
-The result sets `allowInsecureHttp` to `false`, the certificate and key paths, `dataDir` to `C:/warden/data`, `webRoot` to `C:/warden/web` and the generated `adminPassword`. To change a value later, edit the file in an editor (`notepad.exe C:\warden\config.local.json`).
+The result sets `allowInsecureHttp` to `false`, the certificate and key paths, `dataDir` to `C:/guardian/data`, `webRoot` to `C:/guardian/web` and the generated `adminPassword`. To change a value later, edit the file in an editor (`notepad.exe C:\guardian\config.local.json`).
 
 Verification (without printing the password):
 
 ```powershell
-(Get-Content C:\warden\config.local.json -Raw | ConvertFrom-Json).adminPassword.Length -ge 12   # True
-Select-String -Path C:\warden\config.local.json -Pattern 'allowInsecureHttp'
+(Get-Content C:\guardian\config.local.json -Raw | ConvertFrom-Json).adminPassword.Length -ge 12   # True
+Select-String -Path C:\guardian\config.local.json -Pattern 'allowInsecureHttp'
 ```
 
 ## Step 7. Register the service with NSSM
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File C:\warden\scripts\install-service.ps1 -DeployUser warden-deploy -Nssm 'C:\Program Files\nssm\nssm.exe'
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\install-service.ps1 -DeployUser guardian-deploy -Nssm 'C:\Program Files\nssm\nssm.exe'
 ```
 
 The scripts are copied, not signed, so the deploy workflow calls `apply-update.ps1` with `-ExecutionPolicy Bypass`; start the install script the same way.
 
-The script registers `WardenServer` (NSSM; application `C:\warden\bin\warden-server.exe`, arguments `serve --config C:\warden\config.local.json`, working directory `C:\warden`), sends stdout/stderr to `C:\warden\logs` with rotation, starts it at boot, restarts it 5 seconds after a failure, stops it with a console Ctrl-C (`AppStopMethodConsole`) for a clean shutdown, and runs it as the virtual account `NT SERVICE\WardenServer`: no password, no interactive logon, and the only account besides Administrators that can read the TLS private key and the config file. It also lets the deploy user start and stop this one service, and applies the ACLs described in step 4. Re-run it any time; it edits the existing service. A re-run restarts the service (a short downtime) unless you pass `-NoStart`, which leaves it stopped for you to start.
+The script registers `GuardianServer` (NSSM; application `C:\guardian\bin\guardian-server.exe`, arguments `serve --config C:\guardian\config.local.json`, working directory `C:\guardian`), sends stdout/stderr to `C:\guardian\logs` with rotation, starts it at boot, restarts it 5 seconds after a failure, stops it with a console Ctrl-C (`AppStopMethodConsole`) for a clean shutdown, and runs it as the virtual account `NT SERVICE\GuardianServer`: no password, no interactive logon, and the only account besides Administrators that can read the TLS private key and the config file. It also lets the deploy user start and stop this one service, and applies the ACLs described in step 4. Re-run it any time; it edits the existing service. A re-run restarts the service (a short downtime) unless you pass `-NoStart`, which leaves it stopped for you to start.
 
 Verification:
 
 ```powershell
-Get-Service WardenServer                                   # Running
-icacls.exe C:\warden\data\tls                              # SYSTEM, Administrators, NT SERVICE\WardenServer (R)
+Get-Service GuardianServer                                   # Running
+icacls.exe C:\guardian\data\tls                              # SYSTEM, Administrators, NT SERVICE\GuardianServer (R)
 curl.exe -k -s -o NUL -w "healthz: %{http_code}`n" https://127.0.0.1:8443/healthz   # 200 (Windows PowerShell 5.1 has no -SkipCertificateCheck, so use curl.exe)
-Get-Content C:\warden\logs\warden-server.err.log -Tail 20
+Get-Content C:\guardian\logs\guardian-server.err.log -Tail 20
 ```
 
 From the Mac: `Test-NetConnection <vps-ip> -Port 8443` succeeds.
@@ -332,8 +336,8 @@ In the repository settings:
 | Secret | Value |
 | --- | --- |
 | `VPS_HOST` | `<vps-ip>` |
-| `VPS_USER` | `warden-deploy` |
-| `VPS_SSH_KEY` | the full private key file `~/.ssh/warden-deploy` from step 1 |
+| `VPS_USER` | `guardian-deploy` |
+| `VPS_SSH_KEY` | the full private key file `~/.ssh/guardian-deploy` from step 1 |
 | `VPS_KNOWN_HOSTS` | the host key line for `<vps-ip>` |
 
 Obtain the host key line without trusting the network, then compare it out-of-band. On the VPS print the fingerprint of its own key, on the Mac scan and compare:
@@ -350,12 +354,12 @@ ssh-keyscan -t ed25519 <vps-ip> | ssh-keygen -lf -   # fingerprint must equal th
 Only when the two fingerprints match, store the `ssh-keyscan` line as `VPS_KNOWN_HOSTS`. The secrets can be set in the web interface or with the GitHub CLI; the private key is read from the file and is never printed (replace `<fingerprint>` with the `SHA256:...` value you verified, so the line is stored only if the key has not changed since the comparison):
 
 ```sh
-gh secret set VPS_SSH_KEY --env production --repo <owner>/warden-server < ~/.ssh/warden-deploy
-gh secret set VPS_HOST --env production --repo <owner>/warden-server --body <vps-ip>
-gh secret set VPS_USER --env production --repo <owner>/warden-server --body warden-deploy
+gh secret set VPS_SSH_KEY --env production --repo <owner>/guardian-server < ~/.ssh/guardian-deploy
+gh secret set VPS_HOST --env production --repo <owner>/guardian-server --body <vps-ip>
+gh secret set VPS_USER --env production --repo <owner>/guardian-server --body guardian-deploy
 kh=$(ssh-keyscan -t ed25519 <vps-ip> 2>/dev/null)
 [ "$(printf '%s\n' "$kh" | ssh-keygen -lf - | awk '{print $2}')" = "<fingerprint>" ] \
-  && printf '%s\n' "$kh" | gh secret set VPS_KNOWN_HOSTS --env production --repo <owner>/warden-server
+  && printf '%s\n' "$kh" | gh secret set VPS_KNOWN_HOSTS --env production --repo <owner>/guardian-server
 ```
  The workflow uses `StrictHostKeyChecking=yes` with that file, so SSH never trusts on first use; a changed host key fails the deploy. Delete the local private key copy after storing it in the secret if you do not need it elsewhere.
 
@@ -366,20 +370,20 @@ Verification: after merging to main, push a tag `vX.Y.Z` on a main commit and ap
 ## Step 9. First token
 
 ```powershell
-C:\warden\bin\warden-server.exe token add mac-eugene --data-dir C:\warden\data
+C:\guardian\bin\guardian-server.exe token add mac-eugene --data-dir C:\guardian\data
 ```
 
 The token is printed once. Copy it straight into the agent Settings on the Mac (or into your password manager); do not paste it anywhere else. Enter the SPKI pin from step 5 in the same Settings screen. Verification:
 
 ```powershell
-C:\warden\bin\warden-server.exe token list --data-dir C:\warden\data      # mac-eugene and a creation time
+C:\guardian\bin\guardian-server.exe token list --data-dir C:\guardian\data      # mac-eugene and a creation time
 ```
 
 Then the agent's "test connection" in Settings must succeed. Tokens apply immediately (the server re-reads the agent store on every authentication, no restart). A 401 means a wrong token or a mismatching pin: check what was entered in the agent Settings.
 
 ## Deploying
 
-Pushing a tag `vX.Y.Z` (or re-running it on an existing tag) builds Release, runs the tests, waits for your approval of the `production` environment, uploads the archive to `C:\warden\incoming` and runs `apply-update.ps1`. The script accepts only an archive inside `C:\warden\incoming` that contains `warden-server.exe` and `web/` and nothing else, stops the service, keeps the old files in `bin.prev` and `web.prev`, installs the new ones, and polls `https://127.0.0.1:8443/healthz` for 60 seconds (a service start alone takes about 15 seconds on the reference VPS, and the window starts after the start has finished). The probe in Windows PowerShell 5.1 (the default shell of the SSH session) explicitly enables TLS 1.2 (`Tls12`) for its own process, because the server accepts nothing older; without it every deploy would time out and roll back. After a successful update the script deletes the consumed archive from `incoming`; after a failed one the archive stays for inspection, so clean `C:\warden\incoming` by hand after you are done. If the new build does not answer 200, it restores the previous files, restarts the service and exits with status 1 (the workflow fails).
+Pushing a tag `vX.Y.Z` (or re-running it on an existing tag) builds Release, runs the tests, waits for your approval of the `production` environment, uploads the archive to `C:\guardian\incoming` and runs `apply-update.ps1`. The script accepts only an archive inside `C:\guardian\incoming` that contains `guardian-server.exe` and `web/` and nothing else, stops the service, keeps the old files in `bin.prev` and `web.prev`, installs the new ones, and polls `https://127.0.0.1:8443/healthz` for 60 seconds (a service start alone takes about 15 seconds on the reference VPS, and the window starts after the start has finished). The probe in Windows PowerShell 5.1 (the default shell of the SSH session) explicitly enables TLS 1.2 (`Tls12`) for its own process, because the server accepts nothing older; without it every deploy would time out and roll back. After a successful update the script deletes the consumed archive from `incoming`; after a failed one the archive stays for inspection, so clean `C:\guardian\incoming` by hand after you are done. If the new build does not answer 200, it restores the previous files, restarts the service and exits with status 1 (the workflow fails).
 
 ## Rollback
 
@@ -388,10 +392,10 @@ Automatic: `apply-update.ps1` restores `bin.prev`/`web.prev` itself when the hea
 Manual, for a build that is healthy but wrong (as an Administrator):
 
 ```powershell
-Stop-Service WardenServer
-Remove-Item C:\warden\bin\* -Recurse -Force; Copy-Item C:\warden\bin.prev\* C:\warden\bin -Recurse
-Remove-Item C:\warden\web\* -Recurse -Force; Copy-Item C:\warden\web.prev\* C:\warden\web -Recurse
-Start-Service WardenServer
+Stop-Service GuardianServer
+Remove-Item C:\guardian\bin\* -Recurse -Force; Copy-Item C:\guardian\bin.prev\* C:\guardian\bin -Recurse
+Remove-Item C:\guardian\web\* -Recurse -Force; Copy-Item C:\guardian\web.prev\* C:\guardian\web -Recurse
+Start-Service GuardianServer
 ```
 
 Only one previous generation is kept. To go further back, re-run the `deploy` workflow from the older tag.
@@ -401,23 +405,23 @@ Only one previous generation is kept. To go further back, re-run the `deploy` wo
 Logs (NSSM rotates them at 10 MiB or daily):
 
 ```powershell
-Get-Content C:\warden\logs\warden-server.err.log -Tail 100 -Wait    # access log and errors (stderr)
-Get-Content C:\warden\logs\warden-server.out.log -Tail 100
+Get-Content C:\guardian\logs\guardian-server.err.log -Tail 100 -Wait    # access log and errors (stderr)
+Get-Content C:\guardian\logs\guardian-server.out.log -Tail 100
 Get-WinEvent -LogName Application -MaxEvents 20 | Where-Object ProviderName -like 'nssm*'
 ```
 
-Rotate the admin password: edit `adminPassword` in the local config file (step 6), then `Restart-Service WardenServer`. Store the new password in your password manager; nothing else changes.
+Rotate the admin password: edit `adminPassword` in the local config file (step 6), then `Restart-Service GuardianServer`. Store the new password in your password manager; nothing else changes.
 
-Revoke a token: `C:\warden\bin\warden-server.exe token remove <agentId> --data-dir C:\warden\data`; list with `token list`. Issue a replacement with `token add <agentId>`, then enter it in that Mac's agent Settings.
+Revoke a token: `C:\guardian\bin\guardian-server.exe token remove <agentId> --data-dir C:\guardian\data`; list with `token list`. Issue a replacement with `token add <agentId>`, then enter it in that Mac's agent Settings.
 
-Renew the certificate (before it expires; default validity is 825 days): move the old pair out of `C:\warden\data\tls` (the command refuses to overwrite), run `cert generate --host <vps-ip> --out-dir C:\warden\data\tls` again, run `install-service.ps1 -NoStart` to re-apply the ACLs on the new files, then `Restart-Service WardenServer`. The new SPKI pin differs from the old one, so every agent must be given the new pin in its Settings, or it will (correctly) refuse to connect.
+Renew the certificate (before it expires; default validity is 825 days): move the old pair out of `C:\guardian\data\tls` (the command refuses to overwrite), run `cert generate --host <vps-ip> --out-dir C:\guardian\data\tls` again, run `install-service.ps1 -NoStart` to re-apply the ACLs on the new files, then `Restart-Service GuardianServer`. The new SPKI pin differs from the old one, so every agent must be given the new pin in its Settings, or it will (correctly) refuse to connect.
 
 ```powershell
-$old = 'C:\warden\data\tls-old'; New-Item -ItemType Directory $old | Out-Null
-Move-Item C:\warden\data\tls\* $old
-C:\warden\bin\warden-server.exe cert generate --host <vps-ip> --out-dir C:\warden\data\tls
-C:\warden\scripts\install-service.ps1 -NoStart
-Restart-Service WardenServer
+$old = 'C:\guardian\data\tls-old'; New-Item -ItemType Directory $old | Out-Null
+Move-Item C:\guardian\data\tls\* $old
+C:\guardian\bin\guardian-server.exe cert generate --host <vps-ip> --out-dir C:\guardian\data\tls
+C:\guardian\scripts\install-service.ps1 -NoStart
+Restart-Service GuardianServer
 ```
 
 Delete `tls-old` once all agents work with the new pin.
