@@ -209,9 +209,9 @@ ConfigResult loadConfig(std::string_view fileJson, const EnvLookup& env) {
 
 std::optional<std::string> legacyEnvVarProblem(const EnvLookup& env) {
   // The former names, kept only to detect them. Suffixes are shared with the GUARDIAN_* names.
-  static constexpr std::array<std::string_view, 9> kSuffixes{
-      "PORT",    "HOST",        "DATA_DIR", "ADMIN_PASSWORD", "TLS_CERT",
-      "TLS_KEY", "CONFIG_FILE", "WEB_ROOT", "KEY_FILE",
+  // WARDEN_CONFIG_FILE and WARDEN_KEY_FILE were compile-time macros, never variables: not listed.
+  static constexpr std::array<std::string_view, 7> kSuffixes{
+      "PORT", "HOST", "DATA_DIR", "ADMIN_PASSWORD", "TLS_CERT", "TLS_KEY", "WEB_ROOT",
   };
   std::string message;
   for (const auto suffix : kSuffixes) {

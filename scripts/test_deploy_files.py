@@ -308,6 +308,24 @@ class CutoverRunbookTest(unittest.TestCase):
         self.assertIn("Failure in step 2 or 3", self.text)
         self.assertRegex(self.text, r"(?s)Step 8\..*push the tag `v0\.2\.0`.*Step 9\.")
 
+    def test_pasted_outputs_carry_names_only(self):
+        # The pin, the allowed source addresses and the client addresses in the access log are values.
+        for line in self.text.splitlines():
+            if "cert pin" in line and ".exe" in line:
+                self.assertRegex(line.strip(), r"^\$\w+ = ", f"cert pin output must be stored, not printed: {line}")
+        self.assertRegex(self.text, r"pin unchanged")
+        self.assertRegex(self.text, r"PIN CHANGED")
+        self.assertRegex(self.text, r"Remote\s*= .*restricted")
+        for line in self.text.splitlines():
+            if "Get-Content" in line and ".log" in line:
+                self.assertIn("-notmatch", line, f"log tail must drop access lines: {line}")
+
+    def test_binary_is_installed_before_the_service_is_registered(self):
+        self.assertLess(self.text.index("-Bootstrap"), self.text.index("nssm install GuardianServer"))
+
+    def test_rollback_recreates_the_ssh_rule_only_if_it_existed(self):
+        self.assertRegex(self.text, r"(?s)If step 5 found an old SSH rule.{0,200}New-NetFirewallRule -DisplayName '\w+ SSH'")
+
     def test_no_secret_values(self):
         self.assertNotIn("BEGIN OPENSSH PRIVATE KEY", self.text)
         self.assertNotRegex(self.text, r"GUARDIAN_ADMIN_PASSWORD=\S")
