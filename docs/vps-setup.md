@@ -4,6 +4,8 @@
 
 This is the fresh-install runbook. An existing install that still runs under the former name is migrated with [vps-cutover.md](vps-cutover.md).
 
+Verified live on 2026-10-27: the reference VPS was migrated with [vps-cutover.md](vps-cutover.md) (pin, tokens, policy and events unchanged) and runs v0.2.0, deployed by the `v0.2.0` tag through the `guardian-deploy` user.
+
 Checklist for installing the Guardian server on a Windows VPS. The owner runs every command on the VPS in an elevated PowerShell (Administrators); Claude cannot reach the VPS and only reviews outputs you paste back. Never paste a password, a private key or a token into chat or into the repository.
 
 Placeholders: `<vps-ip>` is the public address of the VPS, `<owner-user>` your administrator account, `guardian-deploy` the low-privilege deploy user created in step 1.
