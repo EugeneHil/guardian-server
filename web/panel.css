@@ -90,6 +90,7 @@ main { padding: var(--space-lg) var(--space-xl) var(--space-xl); max-width: 1100
   color: var(--color-text-primary);
   font-size: var(--font-caption-size);
   font-weight: var(--font-title-weight);
+  white-space: nowrap;
 }
 
 .badge.neutral { color: var(--color-text-secondary); }
@@ -129,8 +130,28 @@ td.mono, .mono, .errors li, .editor {
   color: var(--color-text-secondary);
   font-size: var(--font-caption-size);
   overflow-wrap: anywhere;
-  word-break: break-all;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
+
+.proc-path.expanded {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+table.events {
+  table-layout: fixed;
+}
+
+table.events .col-time { width: 12%; }
+table.events .col-agent { width: 14%; }
+table.events .col-process { width: 26%; }
+table.events .col-file { width: 21%; }
+table.events .col-decision { width: 10%; }
+table.events .col-rule { width: 17%; }
 .muted { color: var(--color-text-secondary); font-size: var(--font-caption-size); }
 
 .label {
