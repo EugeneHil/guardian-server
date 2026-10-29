@@ -56,7 +56,7 @@ curl --pinnedpubkey 'sha256//<pin>' -k -sS -o /dev/null -w '%{http_code}\n' http
 
 ```powershell
 Get-Service WardenServer                                  # Running
-C:\warden\bin\warden-server.exe version                   # 0.1.1
+C:\warden\bin\warden-server.exe version                   # 0.1.0 (the v0.1.1 release did not bump the version)
 nssm get WardenServer Application                         # C:\warden\bin\warden-server.exe
 Show-SvcEnvNames WardenServer                             # names only; normally both lists are empty
 [Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'WARDEN_*' }   # machine-wide variables (names only)
@@ -270,7 +270,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\guardian\scripts\install-
 Show-SvcEnvNames GuardianServer                           # run the step 4 check again
 ```
 
-The version is the one the release was built with. If it prints 0.1.0 the bump PR was not part of the release: that is harmless for the cutover (the live install reports 0.1.1, but this is the renamed code line, not a downgrade), but then the tag in step 8 must wait for the bump. If it prints `PIN CHANGED`, stop: the certificate was not moved intact.
+The version is the one the release was built with. If it prints 0.1.0 the bump PR was not part of the release: that is harmless for the cutover (the live v0.1.1 install reports 0.1.0 as well, and this is the renamed code line, not a downgrade), but then the tag in step 8 must wait for the bump. If it prints `PIN CHANGED`, stop: the certificate was not moved intact.
 
 ## Step 8. Start, verify, then release
 
@@ -371,7 +371,7 @@ foreach ($d in 'bin', 'web', 'scripts') {
   Copy-Item "$tmp\$d\*" "C:\warden\$d" -Recurse
 }
 Copy-Item "$tmp\config.local.json" C:\warden\config.local.json -Force
-C:\warden\bin\warden-server.exe version                   # 0.1.1
+C:\warden\bin\warden-server.exe version                   # 0.1.0 (the v0.1.1 release did not bump the version)
 Remove-Item $tmp -Recurse -Force
 ```
 
