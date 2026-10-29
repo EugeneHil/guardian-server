@@ -267,6 +267,20 @@ Get-ChildItem C:\guardian\data\tls
 C:\guardian\bin\guardian-server.exe cert pin C:\guardian\data\tls\server.crt    # same pin again
 ```
 
+### Using a publicly-trusted certificate instead
+
+`cert generate` is enough for the agents, which never consult the system CA store — they trust only the configured SPKI pin. But the same certificate also serves the admin panel, and a self-signed certificate makes the browser show "Not secure". To avoid that, point a domain at the VPS and request a certificate from a public CA (e.g. Let's Encrypt via [win-acme](https://www.win-acme.com/)) instead of running `cert generate`.
+
+`GuardianApp`'s SPKI pin check (`SPKIPin.swift`) only computes a pin for an ECDSA P-256 (`secp256r1`) key; any other key type makes the pin check fail with "certificate pin mismatch", no matter how the agent's pin setting is configured. win-acme defaults to RSA, and its EC option (`settings.json`, `Csr.Ec.CurveName`) is supposed to select the curve — but win-acme 2.2.9 ignores that setting and always issues P-384. Work around it by generating the key and CSR yourself and handing win-acme the CSR instead of letting it generate one:
+
+```powershell
+openssl ecparam -name prime256v1 -genkey -noout -out C:\guardian\csr\<domain>-p256.key
+openssl req -new -key C:\guardian\csr\<domain>-p256.key -out C:\guardian\csr\<domain>-p256.csr `
+  -subj "/CN=<domain>" -addext "subjectAltName=DNS:<domain>"
+```
+
+Run win-acme, choose `3: CSR created by another program`, and point it at that `.csr` and `.key`. Point `tls.certPath`/`tls.keyPath` in `config.local.json` at the issued certificate and the P-256 key, then `Restart-Service GuardianServer`. Get the new pin the same way as for a self-signed certificate (`cert pin <path-to-crt>`) and update it in every agent's Settings — a CA-issued certificate still needs the pin updated on rotation, same as a self-signed one. Re-check win-acme's EC-curve support before relying on its own key generation again; this workaround may no longer be necessary in a later version.
+
 ## Step 6. Local config file
 
 The release archive does not ship the template, so copy it from your checkout first (the local config file is ignored by git; never commit or paste it):
