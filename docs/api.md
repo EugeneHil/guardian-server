@@ -14,7 +14,7 @@ Base URL: `https://<host>:8443`. Examples use `<vps-ip>`, `wdn_<64 hex>` and `<p
 
 ## TLS and the SPKI pin
 
-The server certificate is self-signed (ECDSA P-256, SAN = the host). The agent does not use a CA store; it pins the hash of the certificate's public key: `base64(SHA-256(DER SubjectPublicKeyInfo))`. This is the same format as `curl --pinnedpubkey sha256//<pin>`.
+The certificate `cert generate` writes is self-signed (ECDSA P-256, SAN = the host); a deployment may serve a CA-issued one instead so the admin panel does not warn in the browser ([docs/vps-setup.md](vps-setup.md), step 5). Either way the key must be ECDSA P-256: the agent computes a pin for no other key type. The agent does not use a CA store, and does not check the host name; it pins the hash of the certificate's public key: `base64(SHA-256(DER SubjectPublicKeyInfo))`. This is the same format as `curl --pinnedpubkey sha256//<pin>`.
 
 Procedure:
 
