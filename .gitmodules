@@ -1,0 +1,3 @@
+[submodule "external/guardian-core"]
+	path = external/guardian-core
+	url = https://github.com/EugeneHil/guardian-core.git

@@ -1,4 +1,4 @@
-# --- warden shared ignores (managed by warden-core/tooling/sync-shared.sh) ---
+# --- guardian shared ignores (managed by guardian-core/tooling/sync-shared.sh) ---
 # macOS
 .DS_Store
 # Xcode / Tuist
@@ -36,4 +36,4 @@ data/
 # Coverage
 *.profraw
 coverage/
-# --- end warden shared ignores ---
+# --- end guardian shared ignores ---
