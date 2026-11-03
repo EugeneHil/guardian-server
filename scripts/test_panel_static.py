@@ -146,6 +146,35 @@ class PanelStaticTest(unittest.TestCase):
         self.assertIn("var(--color-text-secondary)", match.group(1))
         self.assertIn("var(--font-caption-size)", match.group(1))
 
+    def test_process_path_truncates_and_expands_on_click(self):
+        css = read("panel.css")
+        collapsed = re.search(r"\.proc-path\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(collapsed)
+        self.assertIn("text-overflow: ellipsis", collapsed.group(1))
+        self.assertIn("white-space: nowrap", collapsed.group(1))
+        expanded = re.search(r"\.proc-path\.expanded\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(expanded)
+        self.assertIn("white-space: normal", expanded.group(1))
+        source = read("app.js")
+        self.assertRegex(source, r'line\.addEventListener\(\s*"click"')
+        self.assertRegex(source, r'classList\.toggle\(\s*"expanded"')
+
+    def test_badge_does_not_wrap(self):
+        css = read("panel.css")
+        match = re.search(r"\.badge\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(match)
+        self.assertIn("white-space: nowrap", match.group(1))
+
+    def test_events_table_gives_decision_and_rule_columns_room(self):
+        html = read("index.html")
+        self.assertRegex(html, r'<table class="data events">')
+        self.assertIn('class="col-decision"', html)
+        self.assertIn('class="col-rule"', html)
+        css = read("panel.css")
+        self.assertIn("table.events", css)
+        self.assertIn(".col-decision", css)
+        self.assertIn(".col-rule", css)
+
 
 if __name__ == "__main__":
     unittest.main()
