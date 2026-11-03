@@ -292,6 +292,9 @@
     if (path && path !== name) {
       var line = el("div", "proc-path mono", path);
       line.title = path;
+      line.addEventListener("click", function () {
+        line.classList.toggle("expanded");
+      });
       box.appendChild(line);
     }
     return box;

@@ -164,6 +164,20 @@ Recommended: limit 8443 to the addresses that need it (your office or home addre
 Set-NetFirewallRule -Name 'GuardianHTTPS' -RemoteAddress '<allowed-address-1>','<allowed-address-2>'
 ```
 
+### Keeping the management plane off the internet
+
+The panel and the agent API together are a management plane, and the strongest restriction available is not to publish it at all. The reference deployment runs a VPN on the VPS (WireGuard, interface `wg-server`) and limits 8443 to `<tunnel-subnet>`, the VPN's own address range in CIDR form, so reaching the panel requires being inside the VPN before any password can be guessed. Add the VPN's own inbound rule to `$keepExtra` in the keep list above, or the cleanup will disable it.
+
+```powershell
+Set-NetFirewallRule -Name 'GuardianHTTPS' -RemoteAddress '<tunnel-subnet>'
+```
+
+**Clients must then address the server by its tunnel address, not its public one.** With a full-tunnel VPN the client routes the public address into the tunnel as well, so the request does arrive, but the gateway's masquerade rewrites the source to the VPS's own public address before the inbound rule is evaluated. The rule no longer matches and the packet is dropped: the connection attempt times out, and with `Set-NetFirewallProfile -All -LogBlocked True` the log at `%SystemRoot%\System32\LogFiles\Firewall\pfirewall.log` shows a `DROP` whose source and destination are both the public address. Point the panel's host name at the tunnel address on each client instead: a `hosts` entry on a single Mac, or DNS served inside the VPN. Do not disable the gateway's NAT, which is what gives the clients their internet route, and do not widen the rule back to the public address.
+
+The certificate is unaffected: the browser validates the name in the URL, not the address it resolves to, and the agent pins the public key and checks no host name at all.
+
+Verification from a client with the tunnel up: `nc -vz <panel-host> 8443` succeeds, and the panel opens with no certificate warning.
+
 Verification:
 
 ```powershell
@@ -266,6 +280,20 @@ The command prints `SPKI pin: ...`. The pin is public: record it (it goes into t
 Get-ChildItem C:\guardian\data\tls
 C:\guardian\bin\guardian-server.exe cert pin C:\guardian\data\tls\server.crt    # same pin again
 ```
+
+### Using a publicly-trusted certificate instead
+
+`cert generate` is enough for the agents, which never consult the system CA store — they trust only the configured SPKI pin. But the same certificate also serves the admin panel, and a self-signed certificate makes the browser show "Not secure". To avoid that, point a domain at the VPS and request a certificate from a public CA (e.g. Let's Encrypt via [win-acme](https://www.win-acme.com/)) instead of running `cert generate`.
+
+`GuardianApp`'s SPKI pin check (`SPKIPin.swift`) only computes a pin for an ECDSA P-256 (`secp256r1`) key; any other key type makes the pin check fail with "certificate pin mismatch", no matter how the agent's pin setting is configured. win-acme defaults to RSA, and its EC option (`settings.json`, `Csr.Ec.CurveName`) is supposed to select the curve — but win-acme 2.2.9 ignores that setting and always issues P-384. Work around it by generating the key and CSR yourself and handing win-acme the CSR instead of letting it generate one:
+
+```powershell
+openssl ecparam -name prime256v1 -genkey -noout -out C:\guardian\csr\<domain>-p256.key
+openssl req -new -key C:\guardian\csr\<domain>-p256.key -out C:\guardian\csr\<domain>-p256.csr `
+  -subj "/CN=<domain>" -addext "subjectAltName=DNS:<domain>"
+```
+
+Run win-acme, choose `3: CSR created by another program`, and point it at that `.csr` and `.key`. Point `tls.certPath`/`tls.keyPath` in `config.local.json` at the issued certificate and the P-256 key, then `Restart-Service GuardianServer`. Get the new pin the same way as for a self-signed certificate (`cert pin <path-to-crt>`) and update it in every agent's Settings — a CA-issued certificate still needs the pin updated on rotation, same as a self-signed one. Re-check win-acme's EC-curve support before relying on its own key generation again; this workaround may no longer be necessary in a later version.
 
 ## Step 6. Local config file
 
