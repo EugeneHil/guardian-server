@@ -98,7 +98,7 @@ python3 -I -B scripts/tokens.py --check  # exit 1 if it is stale
 
 ## Security notes
 
-Threat model: the server is reachable from the internet on one TCP port. Attackers may be anonymous network clients (probing, guessing credentials, sending hostile bodies), the holder of a stolen or leaked agent token, or a network observer. The admin is one trusted person. A host running an agent is trusted only as far as its token allows.
+Threat model: the server listens on one TCP port, in the worst case reachable from the whole internet. Attackers may be anonymous network clients (probing, guessing credentials, sending hostile bodies), the holder of a stolen or leaked agent token, or a network observer. The admin is one trusted person. A host running an agent is trusted only as far as its token allows. The controls below assume nothing about the network; narrowing who can reach the port is a layer underneath them, not a replacement for them, and the reference deployment adds it by keeping 8443 inside a VPN ([docs/vps-setup.md](docs/vps-setup.md), step 2).
 
 Controls:
 
@@ -116,7 +116,7 @@ Known limitations:
 - **One throttle per realm and address.** The agent routes and the admin routes each count failures separately for a remote address (a success in one realm never resets the other), so a NAT neighbour's bad tokens can lock that realm out for the whole address. Locked-out addresses are refused even with valid credentials. `404`/`405` answers do not count.
 - **Windows: CLI token changes can race with the server.** The server re-reads `agents.json` on each authentication; a `token add/remove` that overlaps such a read can fail on Windows because of file sharing rules. Retry the command.
 - **Password length leaks.** The admin password comparison is constant-time except that it reveals the length; it is rate-limited and only reachable over TLS.
-- **Slow-client exhaustion.** The HTTP thread pool is bounded (by cores), reads time out after 10 s, the accept queue is unbounded. Accepted for a firewalled single-admin deployment: restrict TCP 8443 to known addresses at the firewall.
+- **Slow-client exhaustion.** The HTTP thread pool is bounded (by cores), reads time out after 10 s, the accept queue is unbounded. Accepted for a firewalled single-admin deployment: restrict TCP 8443 to known addresses at the firewall, or to a VPN subnet.
 - **Static files follow symlinks inside `webRoot` and have no size cap**, so `webRoot` must be operator-controlled.
 - **Windows file permissions are best-effort.** The `ownerOnly` mode cannot express ACLs; the ACLs of the parent directory protect the TLS private key and `agents.json`, and the install script sets them. Sockets use `SO_EXCLUSIVEADDRUSE`, so a quick restart may fail to bind while old connections linger.
 - **Publishing:** a failure to clear the draft after a successful commit reports an error although the new version is active (a retry publishes the same content again as N+2). Validation errors from guardian-core may echo admin-supplied keys or ids.
