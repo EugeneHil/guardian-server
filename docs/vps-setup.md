@@ -164,6 +164,20 @@ Recommended: limit 8443 to the addresses that need it (your office or home addre
 Set-NetFirewallRule -Name 'GuardianHTTPS' -RemoteAddress '<allowed-address-1>','<allowed-address-2>'
 ```
 
+### Keeping the management plane off the internet
+
+The panel and the agent API together are a management plane, and the strongest restriction available is not to publish it at all. The reference deployment runs a VPN on the VPS (WireGuard, interface `wg-server`) and limits 8443 to `<tunnel-subnet>`, the VPN's own address range in CIDR form, so reaching the panel requires being inside the VPN before any password can be guessed. Add the VPN's own inbound rule to `$keepExtra` in the keep list above, or the cleanup will disable it.
+
+```powershell
+Set-NetFirewallRule -Name 'GuardianHTTPS' -RemoteAddress '<tunnel-subnet>'
+```
+
+**Clients must then address the server by its tunnel address, not its public one.** With a full-tunnel VPN the client routes the public address into the tunnel as well, so the request does arrive, but the gateway's masquerade rewrites the source to the VPS's own public address before the inbound rule is evaluated. The rule no longer matches and the packet is dropped: the connection attempt times out, and with `Set-NetFirewallProfile -All -LogBlocked True` the log at `%SystemRoot%\System32\LogFiles\Firewall\pfirewall.log` shows a `DROP` whose source and destination are both the public address. Point the panel's host name at the tunnel address on each client instead: a `hosts` entry on a single Mac, or DNS served inside the VPN. Do not disable the gateway's NAT, which is what gives the clients their internet route, and do not widen the rule back to the public address.
+
+The certificate is unaffected: the browser validates the name in the URL, not the address it resolves to, and the agent pins the public key and checks no host name at all.
+
+Verification from a client with the tunnel up: `nc -vz <panel-host> 8443` succeeds, and the panel opens with no certificate warning.
+
 Verification:
 
 ```powershell

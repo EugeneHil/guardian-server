@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
@@ -65,7 +65,7 @@ jobs:
           New-Item -ItemType Directory -Path dist | Out-Null
           $name = "guardian-server-$($env:GITHUB_SHA.Substring(0, 12)).zip"
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath (Join-Path dist $name)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: guardian-server-zip
           path: dist/*.zip
@@ -85,7 +85,7 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: guardian-server-zip
           path: dist
